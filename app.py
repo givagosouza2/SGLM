@@ -792,6 +792,7 @@ with tab_cadastro:
 
         st.text("")
         st.text("")
+        st.text("")
     
         if st.button("Solicitar cadastro →", key="btn_cadastrar"):
             ok, msg = submit_cadastro_request(nome, email, lab, novo_usuario, nova_senha)
