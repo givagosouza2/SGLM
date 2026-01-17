@@ -772,23 +772,26 @@ with tab_login:
             st.error(payload)
 
 with tab_cadastro:
-    st.markdown('<div class="field-label">Nome completo</div>', unsafe_allow_html=True)
-    nome = st.text_input("Nome completo", key="cad_nome")
+    coluna1,coluna2 = st.columns(2)
+    with coluna1:
+        st.markdown('<div class="field-label">Nome completo</div>', unsafe_allow_html=True)
+        nome = st.text_input("Nome completo", key="cad_nome")
+    
+        st.markdown('<div class="field-label">E-mail</div>', unsafe_allow_html=True)
+        email = st.text_input("E-mail", key="cad_email")
+    
+        st.markdown('<div class="field-label">Laboratório</div>', unsafe_allow_html=True)
+        lab = st.text_input("Laboratório", key="cad_lab")
 
-    st.markdown('<div class="field-label">E-mail</div>', unsafe_allow_html=True)
-    email = st.text_input("E-mail", key="cad_email")
-
-    st.markdown('<div class="field-label">Laboratório</div>', unsafe_allow_html=True)
-    lab = st.text_input("Laboratório", key="cad_lab")
-
-    st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
-    novo_usuario = st.text_input("Usuário", key="cad_usuario")
-
-    st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
-    nova_senha = st.text_input("Senha", type="password", key="cad_senha")
-
-    if st.button("Solicitar cadastro →", key="btn_cadastrar"):
-        ok, msg = submit_cadastro_request(nome, email, lab, novo_usuario, nova_senha)
-        (st.success if ok else st.error)(msg)
+    with coluna2: 
+        st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
+        novo_usuario = st.text_input("Usuário", key="cad_usuario")
+    
+        st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
+        nova_senha = st.text_input("Senha", type="password", key="cad_senha")
+    
+        if st.button("Solicitar cadastro →", key="btn_cadastrar"):
+            ok, msg = submit_cadastro_request(nome, email, lab, novo_usuario, nova_senha)
+            (st.success if ok else st.error)(msg)
 
 st.markdown("</div>", unsafe_allow_html=True)
