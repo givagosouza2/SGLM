@@ -789,6 +789,9 @@ with tab_cadastro:
     
         st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
         nova_senha = st.text_input("Senha", type="password", key="cad_senha")
+
+        st.text("")
+        st.text("")
     
         if st.button("Solicitar cadastro →", key="btn_cadastrar"):
             ok, msg = submit_cadastro_request(nome, email, lab, novo_usuario, nova_senha)
