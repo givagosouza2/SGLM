@@ -385,7 +385,7 @@ st.markdown(
     div[data-testid="stTextInput"] input:active {
         background: #d9d9d9 !important;
         border: 0px solid transparent !important;
-        height: 20px !important;
+        height: 40px !important;
         font-size: 20px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
@@ -396,7 +396,7 @@ st.markdown(
     div[data-testid="stDateInput"] input {
         background: #d9d9d9 !important;
         border: 0 !important;
-        height: 30px !important;
+        height: 40px !important;
         font-size: 20px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
@@ -406,7 +406,7 @@ st.markdown(
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
         background: #d9d9d9 !important;
         border: 0 !important;
-        min-height: 30px !important;
+        min-height: 40px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
         font-size: 20px !important;
