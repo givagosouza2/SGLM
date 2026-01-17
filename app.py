@@ -368,7 +368,7 @@ st.markdown(
     .content-wrap { max-width: 1300px; margin-left: 0; margin-right: auto; }
 
     div[data-baseweb="tabs"] button[role="tab"] {
-        font-size: 40px !important;
+        font-size: 25px !important;
         font-weight: 500 !important;
         padding: 0 !important;
         margin-right: 28px !important;
@@ -378,7 +378,7 @@ st.markdown(
     div[data-baseweb="tab-highlight"] { background-color: #e53935 !important; height: 4px !important; }
     div[data-baseweb="tabs"] { margin-bottom: 18px; }
 
-    .field-label { font-size: 44px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
+    .field-label { font-size: 25px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
 
     div[data-testid="stTextInput"] input,
     div[data-testid="stTextInput"] input:focus,
@@ -397,7 +397,7 @@ st.markdown(
         background: #d9d9d9 !important;
         border: 0 !important;
         height: 62px !important;
-        font-size: 22px !important;
+        font-size: 25px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
     }
@@ -409,7 +409,7 @@ st.markdown(
         min-height: 62px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
-        font-size: 22px !important;
+        font-size: 25px !important;
     }
 
     /* USER SCREEN */
@@ -417,7 +417,7 @@ st.markdown(
     .status-box {
         padding: 14px 18px;
         border-radius: 2px;
-        font-size: 44px;
+        font-size: 25px;
         display:flex;
         align-items:center;
         justify-content:center;
@@ -444,7 +444,7 @@ st.markdown(
     .equip-name { font-size: 34px; font-weight: 400; margin-top: 6px; }
 
     .reserve-btn button {
-        font-size: 44px !important;
+        font-size: 25px !important;
         padding: 14px 28px !important;
         border-radius: 999px !important;
         border: 6px solid #111 !important;
@@ -453,7 +453,7 @@ st.markdown(
 
     /* ADMIN LIST (rows) */
     .row-head {
-        font-size: 44px;
+        font-size: 25px;
         font-weight: 400;
         margin-top: 10px;
         margin-bottom: 6px;
