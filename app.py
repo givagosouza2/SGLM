@@ -602,9 +602,9 @@ if st.session_state.logged_in:
                         f"""
                         <div class="{row_class}">
                           <div class="req-grid-3">
-                            <div style="font-size:34px;">{r["name"]}</div>
-                            <div style="font-size:34px;">{r["lab"]}</div>
-                            <div style="font-size:34px; {status_text_color(r["status"])}">{r["status"]}</div>
+                            <div style="font-size:20px;">{r["name"]}</div>
+                            <div style="font-size:20px;">{r["lab"]}</div>
+                            <div style="font-size:20px; {status_text_color(r["status"])}">{r["status"]}</div>
                             <div></div>
                           </div>
                         </div>
