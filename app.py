@@ -378,7 +378,7 @@ st.markdown(
     div[data-baseweb="tab-highlight"] { background-color: #e53935 !important; height: 4px !important; }
     div[data-baseweb="tabs"] { margin-bottom: 18px; }
 
-    .field-label { font-size: 25px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
+    .field-label { font-size: 20px; font-weight: 400; margin-top: 18px; margin-bottom: 2px; color: #111; }
 
     div[data-testid="stTextInput"] input,
     div[data-testid="stTextInput"] input:focus,
