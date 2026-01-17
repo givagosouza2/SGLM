@@ -396,7 +396,7 @@ st.markdown(
     div[data-testid="stDateInput"] input {
         background: #d9d9d9 !important;
         border: 0 !important;
-        height: 62px !important;
+        height: 30px !important;
         font-size: 25px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
@@ -406,7 +406,7 @@ st.markdown(
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
         background: #d9d9d9 !important;
         border: 0 !important;
-        min-height: 62px !important;
+        min-height: 30px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
         font-size: 25px !important;
@@ -421,7 +421,7 @@ st.markdown(
         display:flex;
         align-items:center;
         justify-content:center;
-        height: 64px;
+        height: 30px;
         background: #b9f0b9;
     }
     .status-box.bad { background: #f7b3b3; }
