@@ -105,12 +105,12 @@ st.markdown(
     """
     <style>
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    .page-title { font-size: 64px; font-weight: 800; line-height: 1.05; margin-bottom: 40px; }
+    .page-title { font-size: 40px; font-weight: 800; line-height: 1.05; margin-bottom: 40px; }
     .content-wrap { max-width: 980px; margin-left: 0; margin-right: auto; }
 
     div[data-baseweb="tabs"] button[role="tab"] {
-        font-size: 25px !important;
-        font-weight: 500 !important;
+        font-size: 20px !important;
+        font-weight: 100 !important;
         padding: 0 !important;
         margin-right: 28px !important;
         color: #111 !important;
@@ -119,7 +119,7 @@ st.markdown(
     div[data-baseweb="tab-highlight"] { background-color: #e53935 !important; height: 4px !important; }
     div[data-baseweb="tabs"] { margin-bottom: 28px; }
 
-    .field-label { font-size: 44px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
+    .field-label { font-size: 25px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
 
     div[data-testid="stTextInput"] input,
     div[data-testid="stTextInput"] input:focus,
@@ -127,7 +127,7 @@ st.markdown(
         background: #d9d9d9 !important;
         border: 0px solid transparent !important;
         height: 62px !important;
-        font-size: 22px !important;
+        font-size: 25px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
     }
