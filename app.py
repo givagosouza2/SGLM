@@ -386,7 +386,7 @@ st.markdown(
         background: #d9d9d9 !important;
         border: 0px solid transparent !important;
         height: 30px !important;
-        font-size: 22px !important;
+        font-size: 20px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
     }
@@ -397,7 +397,7 @@ st.markdown(
         background: #d9d9d9 !important;
         border: 0 !important;
         height: 30px !important;
-        font-size: 25px !important;
+        font-size: 20px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
     }
@@ -409,7 +409,7 @@ st.markdown(
         min-height: 30px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
-        font-size: 25px !important;
+        font-size: 20px !important;
     }
 
     /* USER SCREEN */
@@ -417,7 +417,7 @@ st.markdown(
     .status-box {
         padding: 14px 18px;
         border-radius: 2px;
-        font-size: 25px;
+        font-size: 20px;
         display:flex;
         align-items:center;
         justify-content:center;
@@ -444,7 +444,7 @@ st.markdown(
     .equip-name { font-size: 34px; font-weight: 400; margin-top: 6px; }
 
     .reserve-btn button {
-        font-size: 25px !important;
+        font-size: 20px !important;
         padding: 14px 28px !important;
         border-radius: 999px !important;
         border: 6px solid #111 !important;
@@ -453,7 +453,7 @@ st.markdown(
 
     /* ADMIN LIST (rows) */
     .row-head {
-        font-size: 25px;
+        font-size: 20px;
         font-weight: 400;
         margin-top: 10px;
         margin-bottom: 6px;
