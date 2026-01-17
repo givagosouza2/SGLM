@@ -20,6 +20,7 @@ DEFAULT_ADMIN_PASSWORD = "admin123"  # troque depois do primeiro login
 DEFAULT_ADMIN_NAME = "Administrador"
 DEFAULT_ADMIN_EMAIL = "admin@icb.ufpa.br"
 
+
 # =========================
 # SEGURANÇA (hash de senha)
 # =========================
@@ -45,6 +46,7 @@ def verify_password(password: str, stored: str) -> bool:
         return hmac.compare_digest(dk, expected)
     except Exception:
         return False
+
 
 # =========================
 # CSV USERS
@@ -86,6 +88,7 @@ def load_users() -> pd.DataFrame:
 def save_users(df: pd.DataFrame):
     df.to_csv(USERS_CSV, index=False)
 
+
 # =========================
 # PRIMEIRO ADMIN (AUTO)
 # =========================
@@ -119,6 +122,7 @@ def ensure_default_admin():
     }
     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     save_users(df)
+
 
 # =========================
 # AUTH
@@ -171,6 +175,7 @@ def authenticate_user(username: str, password: str) -> tuple[bool, dict | str]:
             "email": row.get("email", ""),
         }
     return False, "Usuário ou senha inválidos."
+
 
 # =========================
 # CSV RESERVAS
@@ -234,6 +239,7 @@ def reserve_slot(date_str: str, time_str: str, equipment: str, username: str) ->
     save_reservas(df)
     return True, "Reserva realizada com sucesso!"
 
+
 # =========================
 # ADMIN ACTIONS
 # =========================
@@ -269,6 +275,7 @@ def delete_user(username_to_delete: str) -> tuple[bool, str]:
     df = df[~mask].copy()
     save_users(df)
     return True, f"Usuário '{username_to_delete}' excluído."
+
 
 # =========================
 # CSS (LOGIN + USER SCREEN)
@@ -385,7 +392,7 @@ ensure_default_admin()
 ensure_reservas_file()
 
 # =========================
-# SESSION
+# SESSION DEFAULTS
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -397,6 +404,26 @@ if "role" not in st.session_state:
     st.session_state.role = "user"
 if "selected_equipment" not in st.session_state:
     st.session_state.selected_equipment = "Equipamento 1"
+
+# Datas sincronizadas (duas keys diferentes)
+# Só define valor inicial se ainda não existir
+if "user_date_top" not in st.session_state:
+    st.session_state.user_date_top = pd.Timestamp.today().date()
+if "user_date_side" not in st.session_state:
+    st.session_state.user_date_side = st.session_state.user_date_top
+
+# =========================
+# CALLBACKS de sync
+# =========================
+def sync_top_to_side():
+    # roda quando topo muda
+    if st.session_state.user_date_side != st.session_state.user_date_top:
+        st.session_state.user_date_side = st.session_state.user_date_top
+
+def sync_side_to_top():
+    # roda quando lateral muda
+    if st.session_state.user_date_top != st.session_state.user_date_side:
+        st.session_state.user_date_top = st.session_state.user_date_side
 
 # =========================
 # UI HELPERS
@@ -420,7 +447,6 @@ def equipment_block(label: str, icon: str, selected: bool, key_btn: str):
 # PAGE
 # =========================
 st.markdown('<div class="content-wrap">', unsafe_allow_html=True)
-
 st.markdown(
     '<div class="page-title">Sistema de gerenciamento de uso<br>'
     'do laboratório Multiusuário do ICB</div>',
@@ -452,4 +478,149 @@ if st.session_state.logged_in:
                 hide_index=True
             )
 
-        st.markdown("### Promover
+        st.markdown("### Promover/Rebaixar")
+        u_target = st.text_input("Usuário alvo", key="admin_role_user")
+        new_role = st.selectbox("Novo perfil", ["admin", "user"], index=1, key="admin_new_role")
+        if st.button("Atualizar perfil", key="btn_update_role"):
+            ok, msg = set_role(u_target, new_role)
+            (st.success if ok else st.error)(msg)
+            if ok:
+                st.rerun()
+
+        st.markdown("### Excluir usuário")
+        username_del = st.text_input("Usuário a excluir", key="admin_del_user")
+        if st.button("Excluir", key="btn_excluir_user"):
+            ok, msg = delete_user(username_del)
+            (st.success if ok else st.error)(msg)
+            if ok:
+                st.rerun()
+
+        st.markdown("### Reservas")
+        dfr = load_reservas()
+        if dfr.empty:
+            st.info("Ainda não há reservas.")
+        else:
+            st.dataframe(dfr.sort_values("created_at", ascending=False), use_container_width=True, hide_index=True)
+
+        st.stop()
+
+    # =========================
+    # USER SCREEN (com sync)
+    # =========================
+    c1, c2, c3, c4, c5 = st.columns([1.1, 2.0, 1.2, 2.2, 3.5])
+
+    with c1:
+        st.markdown('<div class="top-label">Data</div>', unsafe_allow_html=True)
+    with c2:
+        picked_date_top = st.date_input(
+            "Data",
+            key="user_date_top",
+            on_change=sync_top_to_side
+        )
+    with c3:
+        st.markdown('<div class="top-label">Horário</div>', unsafe_allow_html=True)
+    with c4:
+        times = [f"{h:02d}:00" for h in range(8, 19)]
+        picked_time = st.selectbox("Horário", times, index=2, key="user_time")
+    with c5:
+        st.markdown('<div class="top-label">Status</div>', unsafe_allow_html=True)
+
+    # Data efetiva sempre a do topo (já sincroniza)
+    date_str = picked_date_top.strftime("%d/%m/%y")
+    equip = st.session_state.selected_equipment
+    available = is_slot_available(date_str, picked_time, equip)
+
+    st.markdown(
+        '<div class="status-box">Disponível</div>' if available else '<div class="status-box bad">Indisponível</div>',
+        unsafe_allow_html=True
+    )
+
+    st.write("")
+
+    left, mid1, mid2, mid3, right = st.columns([1.6, 1.4, 1.4, 1.4, 2.4])
+
+    with left:
+        st.caption("Calendário")
+        picked_date_side = st.date_input(
+            " ",
+            key="user_date_side",
+            on_change=sync_side_to_top
+        )
+
+    # (Recalcula com a data sincronizada)
+    date_str = st.session_state.user_date_top.strftime("%d/%m/%y")
+    equip = st.session_state.selected_equipment
+    available = is_slot_available(date_str, picked_time, equip)
+
+    with mid1:
+        equipment_block("Equipamento 1", "🔬", equip == "Equipamento 1", "sel_eq1")
+    with mid2:
+        equipment_block("Equipamento 2", "🧫", equip == "Equipamento 2", "sel_eq2")
+    with mid3:
+        equipment_block("Equipamento 3", "🖨️", equip == "Equipamento 3", "sel_eq3")
+
+    with right:
+        st.write("")
+        st.write("")
+        st.write("")
+        st.markdown('<div class="reserve-btn">', unsafe_allow_html=True)
+        clicked = st.button("Reservar →", key="btn_reservar")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if clicked:
+            ok, msg = reserve_slot(date_str, picked_time, st.session_state.selected_equipment, st.session_state.username)
+            (st.success if ok else st.error)(msg)
+            if ok:
+                st.rerun()
+
+    st.markdown("### Minhas reservas")
+    dfr = load_reservas()
+    mine = dfr[dfr["username"].str.lower() == st.session_state.username.lower()].copy() if not dfr.empty else pd.DataFrame()
+    if mine.empty:
+        st.info("Você ainda não tem reservas.")
+    else:
+        st.dataframe(mine.sort_values("created_at", ascending=False), use_container_width=True, hide_index=True)
+
+    st.stop()
+
+# =========================
+# LOGIN / CADASTRO
+# =========================
+tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
+
+with tab_login:
+    st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
+    usuario = st.text_input("Usuário", key="login_usuario")
+
+    st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
+    senha = st.text_input("Senha", type="password", key="login_senha")
+
+    if st.button("Entrar →", key="btn_entrar"):
+        ok, payload = authenticate_user(usuario, senha)
+        if ok:
+            st.session_state.logged_in = True
+            st.session_state.user_name = payload["name"]
+            st.session_state.username = payload["username"]
+            st.session_state.role = payload["role"]
+            st.rerun()
+        else:
+            st.error(payload)
+
+with tab_cadastro:
+    st.markdown('<div class="field-label">Nome completo</div>', unsafe_allow_html=True)
+    nome = st.text_input("Nome completo", key="cad_nome")
+
+    st.markdown('<div class="field-label">E-mail</div>', unsafe_allow_html=True)
+    email = st.text_input("E-mail", key="cad_email")
+
+    st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
+    novo_usuario = st.text_input("Usuário", key="cad_usuario")
+
+    st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
+    nova_senha = st.text_input("Senha", type="password", key="cad_senha")
+
+    if st.button("Cadastrar →", key="btn_cadastrar"):
+        ok, msg = register_user(nome, email, novo_usuario, nova_senha)
+        (st.success if ok else st.error)(msg)
+
+st.markdown("</div>", unsafe_allow_html=True)
