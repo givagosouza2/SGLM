@@ -385,7 +385,7 @@ st.markdown(
     div[data-testid="stTextInput"] input:active {
         background: #d9d9d9 !important;
         border: 0px solid transparent !important;
-        height: 30px !important;
+        height: 20px !important;
         font-size: 20px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
