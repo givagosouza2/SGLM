@@ -10,12 +10,16 @@ from pandas.errors import EmptyDataError
 st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
 
 USERS_CSV = Path("users.csv")
-COLUMNS = ["username", "name", "email", "role", "password_hash", "created_at"]
+RESERVAS_CSV = Path("reservas.csv")
+
+USERS_COLUMNS = ["username", "name", "email", "role", "password_hash", "created_at"]
+RES_COLUMNS = ["date", "time", "equipment", "username", "created_at"]
 
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_PASSWORD = "admin123"  # troque depois do primeiro login
 DEFAULT_ADMIN_NAME = "Administrador"
 DEFAULT_ADMIN_EMAIL = "admin@icb.ufpa.br"
+
 
 # =========================
 # SEGURANÇA (hash de senha)
@@ -43,51 +47,48 @@ def verify_password(password: str, stored: str) -> bool:
     except Exception:
         return False
 
+
 # =========================
-# CSV (carregar / salvar)
+# CSV USERS
 # =========================
 def ensure_users_file():
-    # Cria se não existir
     if not USERS_CSV.exists():
-        pd.DataFrame(columns=COLUMNS).to_csv(USERS_CSV, index=False)
+        pd.DataFrame(columns=USERS_COLUMNS).to_csv(USERS_CSV, index=False)
         return
-
-    # Se existir vazio (0 bytes)
     if USERS_CSV.stat().st_size == 0:
-        pd.DataFrame(columns=COLUMNS).to_csv(USERS_CSV, index=False)
+        pd.DataFrame(columns=USERS_COLUMNS).to_csv(USERS_CSV, index=False)
         return
 
-    # Migração simples: adiciona colunas faltantes (role default user)
+    # migração simples
     try:
         df = pd.read_csv(USERS_CSV, dtype=str).fillna("")
         changed = False
-        for col in COLUMNS:
+        for col in USERS_COLUMNS:
             if col not in df.columns:
                 df[col] = "user" if col == "role" else ""
                 changed = True
-        df = df[COLUMNS]
+        df = df[USERS_COLUMNS]
         if changed:
             df.to_csv(USERS_CSV, index=False)
     except EmptyDataError:
-        pd.DataFrame(columns=COLUMNS).to_csv(USERS_CSV, index=False)
+        pd.DataFrame(columns=USERS_COLUMNS).to_csv(USERS_CSV, index=False)
 
 def load_users() -> pd.DataFrame:
     ensure_users_file()
     try:
         df = pd.read_csv(USERS_CSV, dtype=str).fillna("")
     except EmptyDataError:
-        df = pd.DataFrame(columns=COLUMNS)
+        df = pd.DataFrame(columns=USERS_COLUMNS)
         df.to_csv(USERS_CSV, index=False)
 
-    # Normaliza role
-    if "role" in df.columns:
+    if "role" in df.columns and not df.empty:
         df["role"] = df["role"].replace("", "user").str.lower()
         df.loc[~df["role"].isin(["admin", "user"]), "role"] = "user"
-
     return df
 
 def save_users(df: pd.DataFrame):
     df.to_csv(USERS_CSV, index=False)
+
 
 # =========================
 # PRIMEIRO ADMIN (AUTO)
@@ -98,10 +99,9 @@ def ensure_default_admin():
     if has_admin:
         return
 
-    # Se já existir usuário 'admin' como user, promove. Senão cria do zero.
-    mask_admin_user = (df["username"].str.lower() == DEFAULT_ADMIN_USERNAME.lower()) if not df.empty else pd.Series([], dtype=bool)
-    if not df.empty and mask_admin_user.any():
-        idx = df[mask_admin_user].index[0]
+    # se existir "admin", promove
+    if not df.empty and (df["username"].str.lower() == DEFAULT_ADMIN_USERNAME.lower()).any():
+        idx = df[df["username"].str.lower() == DEFAULT_ADMIN_USERNAME.lower()].index[0]
         df.at[idx, "role"] = "admin"
         if not df.at[idx, "password_hash"]:
             df.at[idx, "password_hash"] = hash_password(DEFAULT_ADMIN_PASSWORD)
@@ -125,6 +125,7 @@ def ensure_default_admin():
     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     save_users(df)
 
+
 # =========================
 # AUTH
 # =========================
@@ -138,7 +139,6 @@ def register_user(name: str, email: str, username: str, password: str) -> tuple[
     if not username or not password or not email or not name:
         return False, "Preencha todos os campos."
 
-    # bloqueia cadastro com username 'admin' (reservado)
     if username.lower() == DEFAULT_ADMIN_USERNAME.lower():
         return False, "Este usuário é reservado. Escolha outro nome de usuário."
 
@@ -178,6 +178,71 @@ def authenticate_user(username: str, password: str) -> tuple[bool, dict | str]:
         }
     return False, "Usuário ou senha inválidos."
 
+
+# =========================
+# CSV RESERVAS
+# =========================
+def ensure_reservas_file():
+    if not RESERVAS_CSV.exists():
+        pd.DataFrame(columns=RES_COLUMNS).to_csv(RESERVAS_CSV, index=False)
+        return
+    if RESERVAS_CSV.stat().st_size == 0:
+        pd.DataFrame(columns=RES_COLUMNS).to_csv(RESERVAS_CSV, index=False)
+        return
+
+    # migração simples
+    try:
+        df = pd.read_csv(RESERVAS_CSV, dtype=str).fillna("")
+        changed = False
+        for col in RES_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+                changed = True
+        df = df[RES_COLUMNS]
+        if changed:
+            df.to_csv(RESERVAS_CSV, index=False)
+    except EmptyDataError:
+        pd.DataFrame(columns=RES_COLUMNS).to_csv(RESERVAS_CSV, index=False)
+
+def load_reservas() -> pd.DataFrame:
+    ensure_reservas_file()
+    try:
+        df = pd.read_csv(RESERVAS_CSV, dtype=str).fillna("")
+    except EmptyDataError:
+        df = pd.DataFrame(columns=RES_COLUMNS)
+        df.to_csv(RESERVAS_CSV, index=False)
+    return df
+
+def save_reservas(df: pd.DataFrame):
+    df.to_csv(RESERVAS_CSV, index=False)
+
+def is_slot_available(date_str: str, time_str: str, equipment: str) -> bool:
+    df = load_reservas()
+    if df.empty:
+        return True
+    mask = (df["date"] == date_str) & (df["time"] == time_str) & (df["equipment"] == equipment)
+    return not mask.any()
+
+def reserve_slot(date_str: str, time_str: str, equipment: str, username: str) -> tuple[bool, str]:
+    if not equipment:
+        return False, "Selecione um equipamento."
+
+    if not is_slot_available(date_str, time_str, equipment):
+        return False, "Este horário já está reservado para este equipamento."
+
+    df = load_reservas()
+    new_row = {
+        "date": date_str,
+        "time": time_str,
+        "equipment": equipment,
+        "username": username,
+        "created_at": pd.Timestamp.now().isoformat(timespec="seconds"),
+    }
+    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    save_reservas(df)
+    return True, "Reserva realizada com sucesso!"
+
+
 # =========================
 # ADMIN ACTIONS
 # =========================
@@ -191,7 +256,6 @@ def set_role(username_target: str, role: str) -> tuple[bool, str]:
     if not mask.any():
         return False, "Usuário não encontrado."
 
-    # impede rebaixar a si mesmo (opcional)
     if username_target.lower() == st.session_state.username.lower() and role != "admin":
         return False, "Você não pode rebaixar a si mesmo."
 
@@ -205,11 +269,9 @@ def delete_user(username_to_delete: str) -> tuple[bool, str]:
     if not mask.any():
         return False, "Usuário não encontrado."
 
-    # impede apagar a si mesmo (opcional)
     if username_to_delete.lower() == st.session_state.username.lower():
         return False, "Você não pode excluir o próprio usuário."
 
-    # impede apagar o admin padrão se for o único admin
     if (df.loc[mask, "role"].iloc[0] == "admin") and ((df["role"] == "admin").sum() <= 1):
         return False, "Não é possível excluir o único administrador."
 
@@ -217,16 +279,18 @@ def delete_user(username_to_delete: str) -> tuple[bool, str]:
     save_users(df)
     return True, f"Usuário '{username_to_delete}' excluído."
 
+
 # =========================
-# CSS (layout)
+# CSS (LOGIN + USER SCREEN)
 # =========================
 st.markdown(
     """
     <style>
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    .page-title { font-size: 64px; font-weight: 800; line-height: 1.05; margin-bottom: 40px; }
-    .content-wrap { max-width: 980px; margin-left: 0; margin-right: auto; }
+    .page-title { font-size: 64px; font-weight: 800; line-height: 1.05; margin-bottom: 18px; }
+    .content-wrap { max-width: 1200px; margin-left: 0; margin-right: auto; }
 
+    /* Tabs */
     div[data-baseweb="tabs"] button[role="tab"] {
         font-size: 40px !important;
         font-weight: 500 !important;
@@ -238,8 +302,10 @@ st.markdown(
     div[data-baseweb="tab-highlight"] { background-color: #e53935 !important; height: 4px !important; }
     div[data-baseweb="tabs"] { margin-bottom: 28px; }
 
+    /* Labels custom */
     .field-label { font-size: 44px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
 
+    /* Inputs estilo cinza */
     div[data-testid="stTextInput"] input,
     div[data-testid="stTextInput"] input:focus,
     div[data-testid="stTextInput"] input:active {
@@ -252,6 +318,27 @@ st.markdown(
     }
     div[data-testid="stTextInput"] label { display: none !important; }
 
+    /* Date input / selectbox com cara parecida */
+    div[data-testid="stDateInput"] label { display:none !important; }
+    div[data-testid="stDateInput"] input {
+        background: #d9d9d9 !important;
+        border: 0 !important;
+        height: 62px !important;
+        font-size: 22px !important;
+        border-radius: 3px !important;
+        box-shadow: none !important;
+    }
+    div[data-testid="stSelectbox"] label { display:none !important; }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        background: #d9d9d9 !important;
+        border: 0 !important;
+        min-height: 62px !important;
+        border-radius: 3px !important;
+        box-shadow: none !important;
+        font-size: 22px !important;
+    }
+
+    /* Botões gerais */
     div.stButton > button {
         font-size: 34px !important;
         padding: 10px 22px !important;
@@ -262,18 +349,72 @@ st.markdown(
         margin-top: 18px !important;
     }
     div.stButton > button:hover { background: #f5f5f5 !important; }
+
+    /* --- USER SCREEN --- */
+    .top-label { font-size: 42px; font-weight: 400; }
+    .top-box {
+        background:#d9d9d9;
+        padding: 14px 18px;
+        border-radius: 2px;
+        font-size: 40px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        height: 64px;
+    }
+    .status-box {
+        padding: 14px 18px;
+        border-radius: 2px;
+        font-size: 44px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        height: 64px;
+        background: #b9f0b9;
+    }
+    .status-box.bad {
+        background: #f7b3b3;
+    }
+
+    .equip-card {
+        background: #d9d9d9;
+        border: 6px solid transparent;
+        border-radius: 2px;
+        padding: 18px 16px;
+        height: 260px;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+        align-items:center;
+        gap: 14px;
+        cursor: pointer;
+        user-select:none;
+    }
+    .equip-card.selected { border-color: #ff2b2b; }
+    .equip-icon { font-size: 96px; line-height: 1; }
+    .equip-name { font-size: 34px; font-weight: 400; margin-top: 6px; }
+
+    .reserve-btn button {
+        font-size: 44px !important;
+        padding: 14px 28px !important;
+        border-radius: 999px !important;
+        border: 6px solid #111 !important;
+        background: #fff !important;
+    }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# =========================
-# GARANTE ADMIN PADRÃO
-# =========================
-ensure_default_admin()
 
 # =========================
-# SESSÃO
+# INIT FILES + DEFAULT ADMIN
+# =========================
+ensure_default_admin()
+ensure_reservas_file()
+
+# =========================
+# SESSION
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -283,9 +424,34 @@ if "username" not in st.session_state:
     st.session_state.username = ""
 if "role" not in st.session_state:
     st.session_state.role = "user"
+if "selected_equipment" not in st.session_state:
+    st.session_state.selected_equipment = "Equipamento 1"
+
 
 # =========================
-# UI
+# HELPERS UI
+# =========================
+def equipment_card(label: str, icon: str, selected: bool, key_btn: str):
+    cls = "equip-card selected" if selected else "equip-card"
+    # Card clicável via button transparente por cima (truque simples)
+    st.markdown(
+        f"""
+        <div class="{cls}">
+            <div class="equip-icon">{icon}</div>
+            <div class="equip-name">{label}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # Botão “invisível” associado (fica abaixo; clicabilidade é no botão)
+    # Para manter simples e robusto, usamos um botão normal logo após:
+    if st.button(f"Selecionar {label}", key=key_btn):
+        st.session_state.selected_equipment = label
+        st.rerun()
+
+
+# =========================
+# PAGE
 # =========================
 st.markdown('<div class="content-wrap">', unsafe_allow_html=True)
 
@@ -295,14 +461,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# -------------------------
-# PÓS-LOGIN
-# -------------------------
+# =========================
+# POST LOGIN
+# =========================
 if st.session_state.logged_in:
-    st.success(f"Bem-vindo(a), {st.session_state.user_name}  •  Perfil: {st.session_state.role}")
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
+    # Logout
+    colL, colR = st.columns([1, 5])
+    with colL:
         if st.button("Sair (Logout)"):
             st.session_state.logged_in = False
             st.session_state.user_name = ""
@@ -310,22 +475,28 @@ if st.session_state.logged_in:
             st.session_state.role = "user"
             st.rerun()
 
+    # -------------------------
+    # ADMIN
+    # -------------------------
     if st.session_state.role == "admin":
         st.subheader("Painel do Administrador")
-
         st.warning(
-            f"Admin padrão (se for o primeiro uso): usuário **{DEFAULT_ADMIN_USERNAME}** / senha **{DEFAULT_ADMIN_PASSWORD}**. "
+            f"Se for o primeiro uso: usuário **{DEFAULT_ADMIN_USERNAME}** / senha **{DEFAULT_ADMIN_PASSWORD}**. "
             "Troque a senha assim que possível."
         )
 
-        df = load_users().copy()
-        if not df.empty:
-            view = df[["username", "name", "email", "role", "created_at"]].sort_values("created_at", ascending=False)
-            st.dataframe(view, use_container_width=True, hide_index=True)
+        st.markdown("### Usuários")
+        dfu = load_users().copy()
+        if not dfu.empty:
+            st.dataframe(
+                dfu[["username", "name", "email", "role", "created_at"]].sort_values("created_at", ascending=False),
+                use_container_width=True,
+                hide_index=True
+            )
         else:
             st.info("Ainda não há usuários cadastrados.")
 
-        st.markdown("### Alterar perfil (promover/rebaixar)")
+        st.markdown("### Promover/Rebaixar")
         u_target = st.text_input("Usuário alvo", key="admin_role_user")
         new_role = st.selectbox("Novo perfil", ["admin", "user"], index=1, key="admin_new_role")
         if st.button("Atualizar perfil", key="btn_update_role"):
@@ -342,15 +513,107 @@ if st.session_state.logged_in:
             if ok:
                 st.rerun()
 
+        st.markdown("### Reservas (visão admin)")
+        dfr = load_reservas()
+        if dfr.empty:
+            st.info("Ainda não há reservas.")
+        else:
+            st.dataframe(dfr.sort_values("created_at", ascending=False), use_container_width=True, hide_index=True)
+
+        st.stop()
+
+    # -------------------------
+    # USER SCREEN (igual ao mock)
+    # -------------------------
+    # Seletores (data e horário)
+    c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 2.2, 3.2])
+
+    with c1:
+        st.markdown('<div class="top-label">Data</div>', unsafe_allow_html=True)
+    with c2:
+        picked_date = st.date_input("Data", key="user_date")
+    with c3:
+        st.markdown('<div class="top-label">Horário</div>', unsafe_allow_html=True)
+    with c4:
+        # horários exemplo (você pode ajustar)
+        times = [f"{h:02d}:00" for h in range(8, 19)]
+        picked_time = st.selectbox("Horário", times, index=2, key="user_time")
+    with c5:
+        st.markdown('<div class="top-label">Status</div>', unsafe_allow_html=True)
+
+    date_str = picked_date.strftime("%d/%m/%y")
+    equip = st.session_state.selected_equipment
+    available = is_slot_available(date_str, picked_time, equip)
+
+    # status box (verde/vermelho)
+    status_html = (
+        '<div class="status-box">Disponível</div>'
+        if available
+        else '<div class="status-box bad">Indisponível</div>'
+    )
+    st.markdown(status_html, unsafe_allow_html=True)
+
+    st.write("")  # respiro
+
+    # Linha: calendário (date_input já resolve) + equipamentos + botão reservar
+    left, mid1, mid2, mid3, right = st.columns([1.6, 1.4, 1.4, 1.4, 2.4])
+
+    # “Calendário” (em Streamlit, o próprio date_input é o calendário)
+    with left:
+        st.caption("Calendário")
+        # Apenas para mostrar o widget maior visualmente:
+        st.date_input(" ", key="user_date_side")
+
+        # Mantém sincronizado com o seletor principal
+        st.session_state["user_date"] = st.session_state["user_date_side"]
+        picked_date = st.session_state["user_date"]
+        date_str = picked_date.strftime("%d/%m/%y")
+
+    # Equipamentos
+    with mid1:
+        equipment_card("Equipamento 1", "🔬", equip == "Equipamento 1", "sel_eq1")
+    with mid2:
+        equipment_card("Equipamento 2", "🧫", equip == "Equipamento 2", "sel_eq2")
+    with mid3:
+        equipment_card("Equipamento 3", "🖨️", equip == "Equipamento 3", "sel_eq3")
+
+    # Botão Reservar
+    with right:
+        st.write("")
+        st.write("")
+        st.write("")
+        st.markdown('<div class="reserve-btn">', unsafe_allow_html=True)
+        clicked = st.button("Reservar →", key="btn_reservar")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if clicked:
+            ok, msg = reserve_slot(date_str, picked_time, st.session_state.selected_equipment, st.session_state.username)
+            (st.success if ok else st.error)(msg)
+            if ok:
+                st.rerun()
+
+    # (Opcional) Lista das reservas do usuário
+    st.markdown("### Minhas reservas")
+    dfr = load_reservas()
+    if dfr.empty:
+        st.info("Você ainda não tem reservas.")
     else:
-        st.subheader("Área do Usuário")
-        st.info("Aqui entra o sistema para usuários (solicitar uso, ver agenda, registrar equipamento, etc.).")
+        mine = dfr[dfr["username"].str.lower() == st.session_state.username.lower()].copy()
+        if mine.empty:
+            st.info("Você ainda não tem reservas.")
+        else:
+            st.dataframe(
+                mine.sort_values("created_at", ascending=False),
+                use_container_width=True,
+                hide_index=True
+            )
 
     st.stop()
 
-# -------------------------
+
+# =========================
 # LOGIN / CADASTRO
-# -------------------------
+# =========================
 tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
 
 with tab_login:
