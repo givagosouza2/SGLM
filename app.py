@@ -755,7 +755,7 @@ tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
 
 with tab_login:
     coluna1,coluna2,colun3 = st.columns(3)
-    with colun2:
+    with coluna2:
         st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
         usuario = st.text_input("Usuário", key="login_usuario")
     
