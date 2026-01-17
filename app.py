@@ -6,7 +6,7 @@ import os, base64, hashlib, hmac
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
+st.set_page_config(page_title="Laboratório Multiusuário PPGNBC", layout="wide")
 
 USERS_CSV = Path("users.csv")  # pode trocar o caminho aqui
 
@@ -109,7 +109,7 @@ st.markdown(
     .content-wrap { max-width: 980px; margin-left: 0; margin-right: auto; }
 
     div[data-baseweb="tabs"] button[role="tab"] {
-        font-size: 40px !important;
+        font-size: 25px !important;
         font-weight: 500 !important;
         padding: 0 !important;
         margin-right: 28px !important;
@@ -134,7 +134,7 @@ st.markdown(
     div[data-testid="stTextInput"] label { display: none !important; }
 
     div.stButton > button {
-        font-size: 34px !important;
+        font-size: 25px !important;
         padding: 10px 22px !important;
         border-radius: 999px !important;
         border: 4px solid #111 !important;
