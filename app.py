@@ -363,8 +363,8 @@ st.markdown(
     """
     <style>
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    .page-title { font-size: 64px; font-weight: 800; line-height: 1.05; margin-bottom: 6px; }
-    .subtitle { font-size: 34px; font-weight: 400; margin-bottom: 8px; }
+    .page-title { font-size: 50px; font-weight: 800; line-height: 1.05; margin-bottom: 6px; }
+    .subtitle { font-size: 20px; font-weight: 400; margin-bottom: 8px; }
     .content-wrap { max-width: 1300px; margin-left: 0; margin-right: auto; }
 
     div[data-baseweb="tabs"] button[role="tab"] {
@@ -385,7 +385,7 @@ st.markdown(
     div[data-testid="stTextInput"] input:active {
         background: #d9d9d9 !important;
         border: 0px solid transparent !important;
-        height: 62px !important;
+        height: 30px !important;
         font-size: 22px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
