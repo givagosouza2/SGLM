@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 import os, base64, hashlib, hmac
+from pandas.errors import EmptyDataError
 
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="Laboratório Multiusuário PPGNBC", layout="wide")
+st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
 
 USERS_CSV = Path("users.csv")  # pode trocar o caminho aqui
 
@@ -43,13 +44,25 @@ def verify_password(password: str, stored: str) -> bool:
 # CSV (carregar / salvar)
 # =========================
 def ensure_users_file():
+    # Se não existir, cria com cabeçalho
     if not USERS_CSV.exists():
+        df = pd.DataFrame(columns=["username", "name", "email", "password_hash", "created_at"])
+        df.to_csv(USERS_CSV, index=False)
+        return
+
+    # Se existir mas estiver vazio (0 bytes), regrava o cabeçalho
+    if USERS_CSV.stat().st_size == 0:
         df = pd.DataFrame(columns=["username", "name", "email", "password_hash", "created_at"])
         df.to_csv(USERS_CSV, index=False)
 
 def load_users() -> pd.DataFrame:
     ensure_users_file()
-    df = pd.read_csv(USERS_CSV, dtype=str).fillna("")
+    try:
+        df = pd.read_csv(USERS_CSV, dtype=str).fillna("")
+    except EmptyDataError:
+        # Caso raro: arquivo ficou vazio/corrompido durante escrita
+        df = pd.DataFrame(columns=["username", "name", "email", "password_hash", "created_at"])
+        df.to_csv(USERS_CSV, index=False)
     return df
 
 def save_users(df: pd.DataFrame):
@@ -105,12 +118,12 @@ st.markdown(
     """
     <style>
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    .page-title { font-size: 40px; font-weight: 800; line-height: 1.05; margin-bottom: 40px; }
+    .page-title { font-size: 64px; font-weight: 800; line-height: 1.05; margin-bottom: 40px; }
     .content-wrap { max-width: 980px; margin-left: 0; margin-right: auto; }
 
     div[data-baseweb="tabs"] button[role="tab"] {
-        font-size: 20px !important;
-        font-weight: 100 !important;
+        font-size: 40px !important;
+        font-weight: 500 !important;
         padding: 0 !important;
         margin-right: 28px !important;
         color: #111 !important;
@@ -119,7 +132,7 @@ st.markdown(
     div[data-baseweb="tab-highlight"] { background-color: #e53935 !important; height: 4px !important; }
     div[data-baseweb="tabs"] { margin-bottom: 28px; }
 
-    .field-label { font-size: 25px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
+    .field-label { font-size: 44px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
 
     div[data-testid="stTextInput"] input,
     div[data-testid="stTextInput"] input:focus,
@@ -127,14 +140,14 @@ st.markdown(
         background: #d9d9d9 !important;
         border: 0px solid transparent !important;
         height: 62px !important;
-        font-size: 25px !important;
+        font-size: 22px !important;
         border-radius: 3px !important;
         box-shadow: none !important;
     }
     div[data-testid="stTextInput"] label { display: none !important; }
 
     div.stButton > button {
-        font-size: 25px !important;
+        font-size: 34px !important;
         padding: 10px 22px !important;
         border-radius: 999px !important;
         border: 4px solid #111 !important;
