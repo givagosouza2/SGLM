@@ -20,7 +20,6 @@ DEFAULT_ADMIN_PASSWORD = "admin123"  # troque depois do primeiro login
 DEFAULT_ADMIN_NAME = "Administrador"
 DEFAULT_ADMIN_EMAIL = "admin@icb.ufpa.br"
 
-
 # =========================
 # SEGURANÇA (hash de senha)
 # =========================
@@ -47,7 +46,6 @@ def verify_password(password: str, stored: str) -> bool:
     except Exception:
         return False
 
-
 # =========================
 # CSV USERS
 # =========================
@@ -59,7 +57,6 @@ def ensure_users_file():
         pd.DataFrame(columns=USERS_COLUMNS).to_csv(USERS_CSV, index=False)
         return
 
-    # migração simples
     try:
         df = pd.read_csv(USERS_CSV, dtype=str).fillna("")
         changed = False
@@ -89,7 +86,6 @@ def load_users() -> pd.DataFrame:
 def save_users(df: pd.DataFrame):
     df.to_csv(USERS_CSV, index=False)
 
-
 # =========================
 # PRIMEIRO ADMIN (AUTO)
 # =========================
@@ -99,7 +95,6 @@ def ensure_default_admin():
     if has_admin:
         return
 
-    # se existir "admin", promove
     if not df.empty and (df["username"].str.lower() == DEFAULT_ADMIN_USERNAME.lower()).any():
         idx = df[df["username"].str.lower() == DEFAULT_ADMIN_USERNAME.lower()].index[0]
         df.at[idx, "role"] = "admin"
@@ -124,7 +119,6 @@ def ensure_default_admin():
     }
     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     save_users(df)
-
 
 # =========================
 # AUTH
@@ -178,7 +172,6 @@ def authenticate_user(username: str, password: str) -> tuple[bool, dict | str]:
         }
     return False, "Usuário ou senha inválidos."
 
-
 # =========================
 # CSV RESERVAS
 # =========================
@@ -190,7 +183,6 @@ def ensure_reservas_file():
         pd.DataFrame(columns=RES_COLUMNS).to_csv(RESERVAS_CSV, index=False)
         return
 
-    # migração simples
     try:
         df = pd.read_csv(RESERVAS_CSV, dtype=str).fillna("")
         changed = False
@@ -242,7 +234,6 @@ def reserve_slot(date_str: str, time_str: str, equipment: str, username: str) ->
     save_reservas(df)
     return True, "Reserva realizada com sucesso!"
 
-
 # =========================
 # ADMIN ACTIONS
 # =========================
@@ -279,7 +270,6 @@ def delete_user(username_to_delete: str) -> tuple[bool, str]:
     save_users(df)
     return True, f"Usuário '{username_to_delete}' excluído."
 
-
 # =========================
 # CSS (LOGIN + USER SCREEN)
 # =========================
@@ -290,7 +280,6 @@ st.markdown(
     .page-title { font-size: 64px; font-weight: 800; line-height: 1.05; margin-bottom: 18px; }
     .content-wrap { max-width: 1200px; margin-left: 0; margin-right: auto; }
 
-    /* Tabs */
     div[data-baseweb="tabs"] button[role="tab"] {
         font-size: 40px !important;
         font-weight: 500 !important;
@@ -302,10 +291,8 @@ st.markdown(
     div[data-baseweb="tab-highlight"] { background-color: #e53935 !important; height: 4px !important; }
     div[data-baseweb="tabs"] { margin-bottom: 28px; }
 
-    /* Labels custom */
     .field-label { font-size: 44px; font-weight: 400; margin-top: 18px; margin-bottom: 10px; color: #111; }
 
-    /* Inputs estilo cinza */
     div[data-testid="stTextInput"] input,
     div[data-testid="stTextInput"] input:focus,
     div[data-testid="stTextInput"] input:active {
@@ -318,7 +305,6 @@ st.markdown(
     }
     div[data-testid="stTextInput"] label { display: none !important; }
 
-    /* Date input / selectbox com cara parecida */
     div[data-testid="stDateInput"] label { display:none !important; }
     div[data-testid="stDateInput"] input {
         background: #d9d9d9 !important;
@@ -328,6 +314,7 @@ st.markdown(
         border-radius: 3px !important;
         box-shadow: none !important;
     }
+
     div[data-testid="stSelectbox"] label { display:none !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
         background: #d9d9d9 !important;
@@ -338,7 +325,6 @@ st.markdown(
         font-size: 22px !important;
     }
 
-    /* Botões gerais */
     div.stButton > button {
         font-size: 34px !important;
         padding: 10px 22px !important;
@@ -350,18 +336,7 @@ st.markdown(
     }
     div.stButton > button:hover { background: #f5f5f5 !important; }
 
-    /* --- USER SCREEN --- */
     .top-label { font-size: 42px; font-weight: 400; }
-    .top-box {
-        background:#d9d9d9;
-        padding: 14px 18px;
-        border-radius: 2px;
-        font-size: 40px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        height: 64px;
-    }
     .status-box {
         padding: 14px 18px;
         border-radius: 2px;
@@ -372,22 +347,19 @@ st.markdown(
         height: 64px;
         background: #b9f0b9;
     }
-    .status-box.bad {
-        background: #f7b3b3;
-    }
+    .status-box.bad { background: #f7b3b3; }
 
     .equip-card {
         background: #d9d9d9;
         border: 6px solid transparent;
         border-radius: 2px;
         padding: 18px 16px;
-        height: 260px;
+        height: 240px;
         display:flex;
         flex-direction:column;
         justify-content:center;
         align-items:center;
         gap: 14px;
-        cursor: pointer;
         user-select:none;
     }
     .equip-card.selected { border-color: #ff2b2b; }
@@ -406,9 +378,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-
 # =========================
-# INIT FILES + DEFAULT ADMIN
+# INIT
 # =========================
 ensure_default_admin()
 ensure_reservas_file()
@@ -427,13 +398,11 @@ if "role" not in st.session_state:
 if "selected_equipment" not in st.session_state:
     st.session_state.selected_equipment = "Equipamento 1"
 
-
 # =========================
-# HELPERS UI
+# UI HELPERS
 # =========================
-def equipment_card(label: str, icon: str, selected: bool, key_btn: str):
+def equipment_block(label: str, icon: str, selected: bool, key_btn: str):
     cls = "equip-card selected" if selected else "equip-card"
-    # Card clicável via button transparente por cima (truque simples)
     st.markdown(
         f"""
         <div class="{cls}">
@@ -443,12 +412,9 @@ def equipment_card(label: str, icon: str, selected: bool, key_btn: str):
         """,
         unsafe_allow_html=True,
     )
-    # Botão “invisível” associado (fica abaixo; clicabilidade é no botão)
-    # Para manter simples e robusto, usamos um botão normal logo após:
-    if st.button(f"Selecionar {label}", key=key_btn):
+    if st.button(label, key=key_btn):
         st.session_state.selected_equipment = label
         st.rerun()
-
 
 # =========================
 # PAGE
@@ -465,7 +431,6 @@ st.markdown(
 # POST LOGIN
 # =========================
 if st.session_state.logged_in:
-    # Logout
     colL, colR = st.columns([1, 5])
     with colL:
         if st.button("Sair (Logout)"):
@@ -475,17 +440,10 @@ if st.session_state.logged_in:
             st.session_state.role = "user"
             st.rerun()
 
-    # -------------------------
     # ADMIN
-    # -------------------------
     if st.session_state.role == "admin":
         st.subheader("Painel do Administrador")
-        st.warning(
-            f"Se for o primeiro uso: usuário **{DEFAULT_ADMIN_USERNAME}** / senha **{DEFAULT_ADMIN_PASSWORD}**. "
-            "Troque a senha assim que possível."
-        )
 
-        st.markdown("### Usuários")
         dfu = load_users().copy()
         if not dfu.empty:
             st.dataframe(
@@ -493,162 +451,5 @@ if st.session_state.logged_in:
                 use_container_width=True,
                 hide_index=True
             )
-        else:
-            st.info("Ainda não há usuários cadastrados.")
 
-        st.markdown("### Promover/Rebaixar")
-        u_target = st.text_input("Usuário alvo", key="admin_role_user")
-        new_role = st.selectbox("Novo perfil", ["admin", "user"], index=1, key="admin_new_role")
-        if st.button("Atualizar perfil", key="btn_update_role"):
-            ok, msg = set_role(u_target, new_role)
-            (st.success if ok else st.error)(msg)
-            if ok:
-                st.rerun()
-
-        st.markdown("### Excluir usuário")
-        username_del = st.text_input("Usuário a excluir", key="admin_del_user")
-        if st.button("Excluir", key="btn_excluir_user"):
-            ok, msg = delete_user(username_del)
-            (st.success if ok else st.error)(msg)
-            if ok:
-                st.rerun()
-
-        st.markdown("### Reservas (visão admin)")
-        dfr = load_reservas()
-        if dfr.empty:
-            st.info("Ainda não há reservas.")
-        else:
-            st.dataframe(dfr.sort_values("created_at", ascending=False), use_container_width=True, hide_index=True)
-
-        st.stop()
-
-    # -------------------------
-    # USER SCREEN (igual ao mock)
-    # -------------------------
-    # Seletores (data e horário)
-    c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 2.2, 3.2])
-
-    with c1:
-        st.markdown('<div class="top-label">Data</div>', unsafe_allow_html=True)
-    with c2:
-        picked_date = st.date_input("Data", key="user_date")
-    with c3:
-        st.markdown('<div class="top-label">Horário</div>', unsafe_allow_html=True)
-    with c4:
-        # horários exemplo (você pode ajustar)
-        times = [f"{h:02d}:00" for h in range(8, 19)]
-        picked_time = st.selectbox("Horário", times, index=2, key="user_time")
-    with c5:
-        st.markdown('<div class="top-label">Status</div>', unsafe_allow_html=True)
-
-    date_str = picked_date.strftime("%d/%m/%y")
-    equip = st.session_state.selected_equipment
-    available = is_slot_available(date_str, picked_time, equip)
-
-    # status box (verde/vermelho)
-    status_html = (
-        '<div class="status-box">Disponível</div>'
-        if available
-        else '<div class="status-box bad">Indisponível</div>'
-    )
-    st.markdown(status_html, unsafe_allow_html=True)
-
-    st.write("")  # respiro
-
-    # Linha: calendário (date_input já resolve) + equipamentos + botão reservar
-    left, mid1, mid2, mid3, right = st.columns([1.6, 1.4, 1.4, 1.4, 2.4])
-
-    # “Calendário” (em Streamlit, o próprio date_input é o calendário)
-    with left:
-        st.caption("Calendário")
-        # Apenas para mostrar o widget maior visualmente:
-        st.date_input(" ", key="user_date_side")
-
-        # Mantém sincronizado com o seletor principal
-        st.session_state["user_date"] = st.session_state["user_date_side"]
-        picked_date = st.session_state["user_date"]
-        date_str = picked_date.strftime("%d/%m/%y")
-
-    # Equipamentos
-    with mid1:
-        equipment_card("Equipamento 1", "🔬", equip == "Equipamento 1", "sel_eq1")
-    with mid2:
-        equipment_card("Equipamento 2", "🧫", equip == "Equipamento 2", "sel_eq2")
-    with mid3:
-        equipment_card("Equipamento 3", "🖨️", equip == "Equipamento 3", "sel_eq3")
-
-    # Botão Reservar
-    with right:
-        st.write("")
-        st.write("")
-        st.write("")
-        st.markdown('<div class="reserve-btn">', unsafe_allow_html=True)
-        clicked = st.button("Reservar →", key="btn_reservar")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if clicked:
-            ok, msg = reserve_slot(date_str, picked_time, st.session_state.selected_equipment, st.session_state.username)
-            (st.success if ok else st.error)(msg)
-            if ok:
-                st.rerun()
-
-    # (Opcional) Lista das reservas do usuário
-    st.markdown("### Minhas reservas")
-    dfr = load_reservas()
-    if dfr.empty:
-        st.info("Você ainda não tem reservas.")
-    else:
-        mine = dfr[dfr["username"].str.lower() == st.session_state.username.lower()].copy()
-        if mine.empty:
-            st.info("Você ainda não tem reservas.")
-        else:
-            st.dataframe(
-                mine.sort_values("created_at", ascending=False),
-                use_container_width=True,
-                hide_index=True
-            )
-
-    st.stop()
-
-
-# =========================
-# LOGIN / CADASTRO
-# =========================
-tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
-
-with tab_login:
-    st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
-    usuario = st.text_input("Usuário", key="login_usuario")
-
-    st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
-    senha = st.text_input("Senha", type="password", key="login_senha")
-
-    if st.button("Entrar →", key="btn_entrar"):
-        ok, payload = authenticate_user(usuario, senha)
-        if ok:
-            st.session_state.logged_in = True
-            st.session_state.user_name = payload["name"]
-            st.session_state.username = payload["username"]
-            st.session_state.role = payload["role"]
-            st.rerun()
-        else:
-            st.error(payload)
-
-with tab_cadastro:
-    st.markdown('<div class="field-label">Nome completo</div>', unsafe_allow_html=True)
-    nome = st.text_input("Nome completo", key="cad_nome")
-
-    st.markdown('<div class="field-label">E-mail</div>', unsafe_allow_html=True)
-    email = st.text_input("E-mail", key="cad_email")
-
-    st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
-    novo_usuario = st.text_input("Usuário", key="cad_usuario")
-
-    st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
-    nova_senha = st.text_input("Senha", type="password", key="cad_senha")
-
-    if st.button("Cadastrar →", key="btn_cadastrar"):
-        ok, msg = register_user(nome, email, novo_usuario, nova_senha)
-        (st.success if ok else st.error)(msg)
-
-st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("### Promover
