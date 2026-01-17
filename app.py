@@ -754,22 +754,24 @@ if st.session_state.logged_in:
 tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
 
 with tab_login:
-    st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
-    usuario = st.text_input("Usuário", key="login_usuario")
-
-    st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
-    senha = st.text_input("Senha", type="password", key="login_senha")
-
-    if st.button("Entrar →", key="btn_entrar"):
-        ok, payload = authenticate_user(usuario, senha)
-        if ok:
-            st.session_state.logged_in = True
-            st.session_state.user_name = payload["name"]
-            st.session_state.username = payload["username"]
-            st.session_state.role = payload["role"]
-            st.rerun()
-        else:
-            st.error(payload)
+    coluna1,coluna2,colun3 = st.collumns(3)
+    with colun2:
+        st.markdown('<div class="field-label">Usuário</div>', unsafe_allow_html=True)
+        usuario = st.text_input("Usuário", key="login_usuario")
+    
+        st.markdown('<div class="field-label">Senha</div>', unsafe_allow_html=True)
+        senha = st.text_input("Senha", type="password", key="login_senha")
+    
+        if st.button("Entrar →", key="btn_entrar"):
+            ok, payload = authenticate_user(usuario, senha)
+            if ok:
+                st.session_state.logged_in = True
+                st.session_state.user_name = payload["name"]
+                st.session_state.username = payload["username"]
+                st.session_state.role = payload["role"]
+                st.rerun()
+            else:
+                st.error(payload)
 
 with tab_cadastro:
     coluna1,coluna2 = st.columns(2)
