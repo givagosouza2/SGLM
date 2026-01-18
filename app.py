@@ -1,6 +1,6 @@
 # =========================================================
 # app.py — Login/Cadastro + User/Admin + Aprovações (Sheets)
-# (com retry + diagnóstico + LISTAS/HISTÓRICOS)
+# (com retry + diagnóstico + LISTAS/HISTÓRICOS) — CORRIGIDO
 # =========================================================
 
 import os
@@ -133,6 +133,7 @@ def ensure_worksheets():
             w.append_row(headers)
             return
 
+        # Se só tem cabeçalho e ele não bate, atualiza (não mexe em dados existentes)
         if len(vals) == 1:
             existing_headers = vals[0]
             if existing_headers != headers:
@@ -296,11 +297,9 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
 
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(headers)}
-    for col in ["status", "reviewed_at", "reviewed_by", "reviewed_reason", "review_reason"]:
+    for col in ["status", "reviewed_at", "reviewed_by", "review_reason"]:
         if col in col_map:
-            # mantém compatibilidade: se você tinha "reviewed_reason" por engano, também atualiza
-            val = df.loc[i, "review_reason"] if col in ["reviewed_reason", "review_reason"] else df.loc[i, col]
-            w.update_cell(row_number, col_map[col], str(val))
+            w.update_cell(row_number, col_map[col], str(df.loc[i, col]))
 
     clear_cache()
     return True, f"Solicitação {status.lower()}."
@@ -429,12 +428,11 @@ user = st.session_state.user
 st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user.get('role','user')}**")
 
 # ---------------------------------------------------------
-# PAINEL ADMIN + LISTAS/HISTÓRICOS
+# PAINEL ADMIN + LISTAS/HISTÓRICOS (CORRIGIDO: sort só se houver coluna)
 # ---------------------------------------------------------
 if is_admin(user):
     st.subheader("🛠️ Painel do Administrador")
 
-    # Carrega dados uma vez aqui
     df_users = read_df(SHEET_USERS)
     df_cad = read_df(SHEET_CAD)
     df_res = read_df(SHEET_RES)
@@ -451,8 +449,8 @@ if is_admin(user):
             st.info("Ainda não há usuários cadastrados.")
         else:
             cols = [c for c in ["name", "username", "email", "role", "status", "created_at"] if c in df_users.columns]
-            st.dataframe(df_users[cols], use_container_width=True)
-
+            view = df_users[cols] if cols else df_users
+            st.dataframe(view, use_container_width=True)
             st.caption("Dica: para criar o primeiro admin, edite a coluna 'role' do usuário para 'admin' na planilha.")
 
     # --- CADASTROS: pendentes + histórico ---
@@ -470,7 +468,8 @@ if is_admin(user):
                     st.info("Nenhum cadastro pendente.")
                 else:
                     cols = [c for c in ["id", "name", "username", "email", "created_at", "status"] if c in pend.columns]
-                    st.dataframe(pend[cols], use_container_width=True)
+                    view = pend[cols] if cols else pend
+                    st.dataframe(view, use_container_width=True)
 
                     sel_id = st.selectbox("Selecione um cadastro (id) para revisar", pend["id"].tolist())
                     reason = st.text_input("Motivo (opcional)", key="cad_reason")
@@ -491,9 +490,15 @@ if is_admin(user):
                 if hist.empty:
                     st.info("Ainda não há cadastros aprovados/rejeitados.")
                 else:
-                    cols = [c for c in ["name", "username", "email", "status", "created_at", "reviewed_at", "reviewed_by", "review_reason"] if c in hist.columns]
-                    st.dataframe(hist[cols].sort_values(by=[c for c in ["reviewed_at", "created_at"] if c in hist.columns], ascending=False, errors="ignore"),
-                                 use_container_width=True)
+                    cols = [c for c in ["name", "username", "email", "status", "created_at",
+                                        "reviewed_at", "reviewed_by", "review_reason"] if c in hist.columns]
+                    view = hist[cols] if cols else hist
+
+                    by_cols = [c for c in ["reviewed_at", "created_at"] if c in view.columns]
+                    if by_cols:
+                        view = view.sort_values(by=by_cols, ascending=False)
+
+                    st.dataframe(view, use_container_width=True)
 
     # --- RESERVAS: pendentes + histórico ---
     with a3:
@@ -510,7 +515,8 @@ if is_admin(user):
                     st.info("Nenhuma reserva pendente.")
                 else:
                     cols = [c for c in ["id", "username", "equipment", "date", "time", "status", "created_at"] if c in pend_res.columns]
-                    st.dataframe(pend_res[cols], use_container_width=True)
+                    view = pend_res[cols] if cols else pend_res
+                    st.dataframe(view, use_container_width=True)
 
                     sel_id = st.selectbox("Selecione uma reserva (id) para revisar", pend_res["id"].tolist(), key="res_sel")
                     reason = st.text_input("Motivo (opcional)", key="res_reason")
@@ -531,9 +537,15 @@ if is_admin(user):
                 if hist_res.empty:
                     st.info("Ainda não há reservas confirmadas/rejeitadas.")
                 else:
-                    cols = [c for c in ["username", "equipment", "date", "time", "status", "created_at", "reviewed_at", "reviewed_by", "review_reason"] if c in hist_res.columns]
-                    st.dataframe(hist_res[cols].sort_values(by=[c for c in ["reviewed_at", "created_at"] if c in hist_res.columns], ascending=False, errors="ignore"),
-                                 use_container_width=True)
+                    cols = [c for c in ["username", "equipment", "date", "time", "status", "created_at",
+                                        "reviewed_at", "reviewed_by", "review_reason"] if c in hist_res.columns]
+                    view = hist_res[cols] if cols else hist_res
+
+                    by_cols = [c for c in ["reviewed_at", "created_at"] if c in view.columns]
+                    if by_cols:
+                        view = view.sort_values(by=by_cols, ascending=False)
+
+                    st.dataframe(view, use_container_width=True)
 
     st.divider()
 
@@ -542,7 +554,6 @@ if is_admin(user):
 # ---------------------------------------------------------
 st.subheader("📌 Solicitar uso de equipamento")
 
-# Recarrega reservas (pode ter mudado no painel admin)
 df_res = read_df(SHEET_RES)
 
 c1, c2, c3 = st.columns([2, 2, 2])
