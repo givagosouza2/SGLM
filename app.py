@@ -1,4 +1,3 @@
-```python
 # =========================================================
 # app.py — Login/Cadastro + User/Admin + Aprovações (Sheets)
 # (com retry + diagnóstico seguro para APIError do gspread)
