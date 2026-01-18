@@ -1,6 +1,6 @@
 # =========================================================
 # app.py — Login/Cadastro + User/Admin + Aprovações (Sheets)
-# (com retry + diagnóstico seguro para APIError do gspread)
+# (com retry + diagnóstico + LISTAS/HISTÓRICOS)
 # =========================================================
 
 import os
@@ -23,9 +23,6 @@ from gspread.exceptions import APIError, WorksheetNotFound
 st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
 st.title("Sistema de gerenciamento do Laboratório Multiusuário ICB")
 
-# Deve existir no Secrets do Streamlit:
-# GSHEET_SPREADSHEET_ID = "..."
-# [GSERVICE] ... JSON do service account ...
 SPREADSHEET_ID = st.secrets["GSHEET_SPREADSHEET_ID"]
 
 SHEET_USERS = "users"
@@ -136,7 +133,6 @@ def ensure_worksheets():
             w.append_row(headers)
             return
 
-        # Se só tem cabeçalho e ele não bate, atualiza (sem mexer em dados existentes)
         if len(vals) == 1:
             existing_headers = vals[0]
             if existing_headers != headers:
@@ -178,8 +174,6 @@ def _extract_api_error_info(e: APIError):
 @st.cache_data(ttl=15, show_spinner=False)
 def read_df(sheet_name: str) -> pd.DataFrame:
     last_err = None
-
-    # retry simples para erros temporários (quota/instabilidade)
     for attempt in range(4):
         try:
             w = ws(sheet_name)
@@ -210,7 +204,6 @@ def read_df(sheet_name: str) -> pd.DataFrame:
             st.write("Resposta (parcial):", text)
         st.write("Service account:", st.secrets["GSERVICE"].get("client_email"))
         st.write("Spreadsheet ID:", SPREADSHEET_ID)
-
     return pd.DataFrame()
 
 # ---------------------------------------------------------
@@ -289,7 +282,6 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
     df.loc[i, "reviewed_by"] = admin_username
     df.loc[i, "review_reason"] = reason
 
-    # Se aprovou, cria usuário
     if action == "Aprovar":
         ws(SHEET_USERS).append_row([
             str(uuid.uuid4()),
@@ -297,16 +289,18 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
             df.loc[i, "username"],
             df.loc[i, "email"],
             df.loc[i, "password_hash"],
-            "user",      # padrão
+            "user",
             "Ativo",
             datetime.utcnow().isoformat(timespec="seconds"),
         ])
 
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(headers)}
-    for col in ["status", "reviewed_at", "reviewed_by", "review_reason"]:
+    for col in ["status", "reviewed_at", "reviewed_by", "reviewed_reason", "review_reason"]:
         if col in col_map:
-            w.update_cell(row_number, col_map[col], str(df.loc[i, col]))
+            # mantém compatibilidade: se você tinha "reviewed_reason" por engano, também atualiza
+            val = df.loc[i, "review_reason"] if col in ["reviewed_reason", "review_reason"] else df.loc[i, col]
+            w.update_cell(row_number, col_map[col], str(val))
 
     clear_cache()
     return True, f"Solicitação {status.lower()}."
@@ -434,79 +428,128 @@ if not st.session_state.logged:
 user = st.session_state.user
 st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user.get('role','user')}**")
 
-df_res = read_df(SHEET_RES)
-
 # ---------------------------------------------------------
-# PAINEL ADMIN
+# PAINEL ADMIN + LISTAS/HISTÓRICOS
 # ---------------------------------------------------------
 if is_admin(user):
     st.subheader("🛠️ Painel do Administrador")
-    t1, t2 = st.tabs(["👤 Cadastros pendentes", "📅 Reservas pendentes"])
 
-    with t1:
-        df_cad = read_df(SHEET_CAD)
-        pend = df_cad[df_cad.get("status", "") == "Pendente"] if not df_cad.empty else pd.DataFrame()
+    # Carrega dados uma vez aqui
+    df_users = read_df(SHEET_USERS)
+    df_cad = read_df(SHEET_CAD)
+    df_res = read_df(SHEET_RES)
 
-        if pend.empty:
-            st.info("Nenhuma solicitação de cadastro pendente.")
+    a1, a2, a3 = st.tabs([
+        "👥 Pessoas cadastradas",
+        "👤 Cadastros (pendentes + histórico)",
+        "📅 Reservas (pendentes + histórico)",
+    ])
+
+    # --- LISTA DE USUÁRIOS ---
+    with a1:
+        if df_users.empty:
+            st.info("Ainda não há usuários cadastrados.")
         else:
-            cols = [c for c in ["id", "name", "username", "email", "created_at", "status"] if c in pend.columns]
-            st.dataframe(pend[cols], use_container_width=True)
+            cols = [c for c in ["name", "username", "email", "role", "status", "created_at"] if c in df_users.columns]
+            st.dataframe(df_users[cols], use_container_width=True)
 
-            sel_id = st.selectbox("Selecione um cadastro (id) para revisar", pend["id"].tolist())
-            reason = st.text_input("Motivo (opcional)", key="cad_reason")
+            st.caption("Dica: para criar o primeiro admin, edite a coluna 'role' do usuário para 'admin' na planilha.")
 
-            cA, cR = st.columns(2)
-            with cA:
-                if st.button("Aprovar cadastro", use_container_width=True):
-                    ok, msg = cadastro_review(sel_id, "Aprovar", user.get("username", "admin"), reason)
-                    (st.success if ok else st.error)(msg)
-                    st.rerun()
-            with cR:
-                if st.button("Rejeitar cadastro", use_container_width=True):
-                    ok, msg = cadastro_review(sel_id, "Rejeitar", user.get("username", "admin"), reason)
-                    (st.success if ok else st.error)(msg)
-                    st.rerun()
-
-    with t2:
-        pend_res = df_res[df_res.get("status", "") == "Pendente"] if not df_res.empty else pd.DataFrame()
-
-        if pend_res.empty:
-            st.info("Nenhuma solicitação de reserva pendente.")
+    # --- CADASTROS: pendentes + histórico ---
+    with a2:
+        if df_cad.empty:
+            st.info("Ainda não há solicitações de cadastro.")
         else:
-            cols = [c for c in ["id", "username", "equipment", "date", "time", "status", "created_at"] if c in pend_res.columns]
-            st.dataframe(pend_res[cols], use_container_width=True)
+            pend = df_cad[df_cad.get("status", "") == "Pendente"]
+            hist = df_cad[df_cad.get("status", "").isin(["Aprovado", "Rejeitado"])]
 
-            sel_id = st.selectbox("Selecione uma reserva (id) para revisar", pend_res["id"].tolist(), key="res_sel")
-            reason = st.text_input("Motivo (opcional)", key="res_reason")
+            tpend, thist = st.tabs(["Pendentes", "Histórico (Aprovados/Rejeitados)"])
 
-            cC, cX = st.columns(2)
-            with cC:
-                if st.button("Confirmar reserva", use_container_width=True):
-                    ok, msg = reserva_review(sel_id, "Confirmar", user.get("username", "admin"), reason)
-                    (st.success if ok else st.error)(msg)
-                    st.rerun()
-            with cX:
-                if st.button("Rejeitar reserva", use_container_width=True):
-                    ok, msg = reserva_review(sel_id, "Rejeitar", user.get("username", "admin"), reason)
-                    (st.success if ok else st.error)(msg)
-                    st.rerun()
+            with tpend:
+                if pend.empty:
+                    st.info("Nenhum cadastro pendente.")
+                else:
+                    cols = [c for c in ["id", "name", "username", "email", "created_at", "status"] if c in pend.columns]
+                    st.dataframe(pend[cols], use_container_width=True)
+
+                    sel_id = st.selectbox("Selecione um cadastro (id) para revisar", pend["id"].tolist())
+                    reason = st.text_input("Motivo (opcional)", key="cad_reason")
+
+                    cA, cR = st.columns(2)
+                    with cA:
+                        if st.button("Aprovar cadastro", use_container_width=True):
+                            ok, msg = cadastro_review(sel_id, "Aprovar", user.get("username", "admin"), reason)
+                            (st.success if ok else st.error)(msg)
+                            st.rerun()
+                    with cR:
+                        if st.button("Rejeitar cadastro", use_container_width=True):
+                            ok, msg = cadastro_review(sel_id, "Rejeitar", user.get("username", "admin"), reason)
+                            (st.success if ok else st.error)(msg)
+                            st.rerun()
+
+            with thist:
+                if hist.empty:
+                    st.info("Ainda não há cadastros aprovados/rejeitados.")
+                else:
+                    cols = [c for c in ["name", "username", "email", "status", "created_at", "reviewed_at", "reviewed_by", "review_reason"] if c in hist.columns]
+                    st.dataframe(hist[cols].sort_values(by=[c for c in ["reviewed_at", "created_at"] if c in hist.columns], ascending=False, errors="ignore"),
+                                 use_container_width=True)
+
+    # --- RESERVAS: pendentes + histórico ---
+    with a3:
+        if df_res.empty:
+            st.info("Ainda não há solicitações de reserva.")
+        else:
+            pend_res = df_res[df_res.get("status", "") == "Pendente"]
+            hist_res = df_res[df_res.get("status", "").isin(["Confirmado", "Rejeitado"])]
+
+            tpend, thist = st.tabs(["Pendentes", "Histórico (Confirmadas/Rejeitadas)"])
+
+            with tpend:
+                if pend_res.empty:
+                    st.info("Nenhuma reserva pendente.")
+                else:
+                    cols = [c for c in ["id", "username", "equipment", "date", "time", "status", "created_at"] if c in pend_res.columns]
+                    st.dataframe(pend_res[cols], use_container_width=True)
+
+                    sel_id = st.selectbox("Selecione uma reserva (id) para revisar", pend_res["id"].tolist(), key="res_sel")
+                    reason = st.text_input("Motivo (opcional)", key="res_reason")
+
+                    cC, cX = st.columns(2)
+                    with cC:
+                        if st.button("Confirmar reserva", use_container_width=True):
+                            ok, msg = reserva_review(sel_id, "Confirmar", user.get("username", "admin"), reason)
+                            (st.success if ok else st.error)(msg)
+                            st.rerun()
+                    with cX:
+                        if st.button("Rejeitar reserva", use_container_width=True):
+                            ok, msg = reserva_review(sel_id, "Rejeitar", user.get("username", "admin"), reason)
+                            (st.success if ok else st.error)(msg)
+                            st.rerun()
+
+            with thist:
+                if hist_res.empty:
+                    st.info("Ainda não há reservas confirmadas/rejeitadas.")
+                else:
+                    cols = [c for c in ["username", "equipment", "date", "time", "status", "created_at", "reviewed_at", "reviewed_by", "review_reason"] if c in hist_res.columns]
+                    st.dataframe(hist_res[cols].sort_values(by=[c for c in ["reviewed_at", "created_at"] if c in hist_res.columns], ascending=False, errors="ignore"),
+                                 use_container_width=True)
 
     st.divider()
 
 # ---------------------------------------------------------
-# PAINEL USUÁRIO (e admin também pode solicitar)
+# PAINEL DO USUÁRIO (e admin também pode solicitar)
 # ---------------------------------------------------------
 st.subheader("📌 Solicitar uso de equipamento")
 
-c1, c2, c3 = st.columns([2, 2, 2])
+# Recarrega reservas (pode ter mudado no painel admin)
+df_res = read_df(SHEET_RES)
 
+c1, c2, c3 = st.columns([2, 2, 2])
 with c1:
     equip = st.selectbox("Equipamento", EQUIPAMENTOS)
-
 with c2:
     date_obj = st.date_input("Data", datetime.today().date())
-
 with c3:
     time_str = st.selectbox("Horário", HORARIOS)
 
@@ -526,9 +569,9 @@ if st.button("Enviar pedido de reserva", use_container_width=True):
     else:
         st.error("Horário indisponível para este equipamento.")
 
-st.subheader("📋 Meus pedidos (reservas)")
-df_res = read_df(SHEET_RES)
+st.subheader("📋 Meus pedidos (pendentes e finalizados)")
 
+df_res = read_df(SHEET_RES)
 if df_res.empty or "username" not in df_res.columns:
     st.info("Você ainda não fez pedidos.")
 else:
@@ -536,11 +579,22 @@ else:
     if mine.empty:
         st.info("Você ainda não fez pedidos.")
     else:
-        # ordena se as colunas existirem
-        sort_cols = [c for c in ["date", "time", "created_at"] if c in mine.columns]
-        if sort_cols:
-            mine = mine.sort_values(by=sort_cols, ascending=[True] * len(sort_cols), errors="ignore")
-        st.dataframe(mine, use_container_width=True)
+        pend = mine[mine.get("status", "") == "Pendente"]
+        done = mine[mine.get("status", "").isin(["Confirmado", "Rejeitado"])]
+
+        tpend, tdone = st.tabs(["Pendentes", "Finalizados (Confirmados/Rejeitados)"])
+
+        with tpend:
+            if pend.empty:
+                st.info("Sem pedidos pendentes.")
+            else:
+                st.dataframe(pend, use_container_width=True)
+
+        with tdone:
+            if done.empty:
+                st.info("Sem pedidos finalizados.")
+            else:
+                st.dataframe(done, use_container_width=True)
 
 st.divider()
 
@@ -548,4 +602,3 @@ if st.button("Sair"):
     st.session_state.logged = False
     st.session_state.user = {}
     st.rerun()
-
