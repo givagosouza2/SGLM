@@ -1,6 +1,7 @@
 # =========================================================
 # app.py — Login/Cadastro + User/Admin + Aprovações (Sheets)
-# (ajustado aos seus cabeçalhos + bootstrap seguro + diagnóstico)
+# Cabeçalhos alinhados ao seu Google Sheets
+# Bootstrap robusto (evita fetch_sheet_metadata repetido)
 # =========================================================
 
 import os
@@ -125,7 +126,6 @@ def _retryable(status):
 
 @st.cache_resource
 def spreadsheet():
-    # Abre a planilha com retry para erros temporários
     last_err = None
     for attempt in range(4):
         try:
@@ -145,64 +145,109 @@ def clear_cache():
     st.cache_data.clear()
 
 # ---------------------------------------------------------
-# HEALTH CHECK (não deixa o app morrer sem diagnóstico)
+# HEALTH CHECK + BOOTSTRAP ROBUSTO (sem sh.worksheet repetido)
 # ---------------------------------------------------------
 def sheets_health_check_or_stop():
     try:
         sh = spreadsheet()
-        # força metadata (onde você estava falhando)
-        _ = sh.fetch_sheet_metadata()
         return sh
     except SpreadsheetNotFound:
         st.error("Planilha não encontrada. Confirme o GSHEET_SPREADSHEET_ID no Secrets.")
         st.stop()
     except APIError as e:
         status, text = _extract_api_error_info(e)
-        st.error("Falha ao acessar a planilha (metadata). Isso costuma ser permissão/API/quota.")
+        st.error("Falha ao acessar a planilha. Isso costuma ser permissão/API/quota.")
         with st.expander("Detalhes técnicos (diagnóstico)"):
             st.write("HTTP status:", status)
             if text:
                 st.write("Resposta (parcial):", text)
             st.write("Service account:", st.secrets["GSERVICE"].get("client_email"))
             st.write("Spreadsheet ID:", SPREADSHEET_ID)
-        st.info(
-            "Checklist rápido:\n"
-            "1) Compartilhe a planilha com o e-mail do service account como Editor.\n"
-            "2) Habilite Google Sheets API e Google Drive API no Google Cloud.\n"
-            "3) Se for quota/instabilidade, tente novamente / reinicie o app."
-        )
         st.stop()
 
-# ---------------------------------------------------------
-# BOOTSTRAP: garante abas e cabeçalho (só após health check)
-# ---------------------------------------------------------
-def ensure_worksheet(sh, title: str, headers: list[str]):
-    try:
-        w = sh.worksheet(title)
-    except WorksheetNotFound:
-        w = sh.add_worksheet(title=title, rows=2000, cols=max(12, len(headers)))
-        w.append_row(headers)
-        return
+def get_worksheets_map_with_retry(sh):
+    """
+    Chama sh.worksheets() UMA vez (1 metadata fetch) e cacheia o resultado.
+    Com retry em 429/500/503.
+    """
+    last_err = None
+    for attempt in range(4):
+        try:
+            wlist = sh.worksheets()
+            return {w.title: w for w in wlist}
+        except APIError as e:
+            last_err = e
+            status, _ = _extract_api_error_info(e)
+            if _retryable(status):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            break
 
-    vals = w.get_all_values()
+    status, text = _extract_api_error_info(last_err) if last_err else (None, "")
+    st.error("Falha ao listar abas da planilha (metadata).")
+    with st.expander("Detalhes técnicos (diagnóstico)"):
+        st.write("HTTP status:", status)
+        if text:
+            st.write("Resposta (parcial):", text)
+        st.write("Service account:", st.secrets["GSERVICE"].get("client_email"))
+        st.write("Spreadsheet ID:", SPREADSHEET_ID)
+    st.stop()
+
+def ensure_header(ws_obj, headers: list[str]):
+    vals = ws_obj.get_all_values()
     if not vals:
-        w.append_row(headers)
+        ws_obj.append_row(headers)
         return
-
+    # Se só tem uma linha e não bate com o header esperado, corrige
     if len(vals) == 1 and vals[0] != headers:
-        w.update("1:1", [headers])
+        ws_obj.update("1:1", [headers])
 
 def ensure_worksheets(sh):
-    ensure_worksheet(sh, SHEET_USERS, HEADERS_USERS)
-    ensure_worksheet(sh, SHEET_CAD, HEADERS_CAD)
-    ensure_worksheet(sh, SHEET_RES, HEADERS_RES)
+    # Uma única leitura de metadata
+    wmap = get_worksheets_map_with_retry(sh)
 
-# roda check + bootstrap com segurança
+    targets = [
+        (SHEET_USERS, HEADERS_USERS),
+        (SHEET_CAD, HEADERS_CAD),
+        (SHEET_RES, HEADERS_RES),
+    ]
+
+    for title, headers in targets:
+        if title not in wmap:
+            # cria sem chamar sh.worksheet()
+            ws_obj = sh.add_worksheet(title=title, rows=2000, cols=max(12, len(headers)))
+            ws_obj.append_row(headers)
+            # atualiza o map local
+            wmap[title] = ws_obj
+        else:
+            try:
+                ensure_header(wmap[title], headers)
+            except APIError as e:
+                # se header falhar por quota, retry leve
+                status, _ = _extract_api_error_info(e)
+                if _retryable(status):
+                    time.sleep(1.5)
+                    ensure_header(wmap[title], headers)
+                else:
+                    raise
+
+# roda health check + bootstrap
 _sh = sheets_health_check_or_stop()
-ensure_worksheets(_sh)
+try:
+    ensure_worksheets(_sh)
+except APIError as e:
+    status, text = _extract_api_error_info(e)
+    st.error("Falha ao preparar as abas/cabeçalhos no Google Sheets.")
+    with st.expander("Detalhes técnicos (diagnóstico)"):
+        st.write("HTTP status:", status)
+        if text:
+            st.write("Resposta (parcial):", text)
+        st.write("Service account:", st.secrets["GSERVICE"].get("client_email"))
+        st.write("Spreadsheet ID:", SPREADSHEET_ID)
+    st.stop()
 
 # ---------------------------------------------------------
-# Helpers: worksheet + leitura robusta (retry)
+# Helpers: ws + leitura robusta
 # ---------------------------------------------------------
 def ws(sheet_name: str):
     try:
@@ -240,7 +285,7 @@ def read_df(sheet_name: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 # ---------------------------------------------------------
-# AUTH (users não tem id/status)
+# AUTH (users: username|name|email|role|password_hash|created_at)
 # ---------------------------------------------------------
 def users_get(username: str):
     df = read_df(SHEET_USERS)
@@ -268,7 +313,7 @@ def cadastro_submit(name: str, username: str, email: str, password: str):
         return False, "Este username já existe."
 
     df_cad = read_df(SHEET_CAD)
-    if not df_cad.empty and "username" in df_cad.columns and "status" in df_cad.columns:
+    if not df_cad.empty:
         m = (df_cad["username"].str.lower() == username.lower()) & (df_cad["status"] == "Pendente")
         if m.any():
             return False, "Já existe um cadastro pendente com esse username."
@@ -309,6 +354,7 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
     df.loc[i, "reviewed_by"] = admin_username
     df.loc[i, "review_reason"] = reason
 
+    # Se aprovou, cria usuário em users com cabeçalho REAL
     if action == "Aprovar":
         ws(SHEET_USERS).append_row([
             df.loc[i, "username"],
@@ -319,6 +365,7 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
             datetime.utcnow().isoformat(timespec="seconds"),
         ])
 
+    # Atualiza a linha
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(headers)}
     for col in ["status", "reviewed_at", "reviewed_by", "review_reason"]:
@@ -471,7 +518,6 @@ if is_admin(user):
         else:
             cols = [c for c in ["username", "name", "email", "role", "created_at"] if c in df_users.columns]
             st.dataframe(df_users[cols] if cols else df_users, use_container_width=True)
-            st.caption("Dica: para criar o primeiro admin, edite a coluna 'role' do usuário para 'admin' na planilha.")
 
     with a2:
         if df_cad.empty:
