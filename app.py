@@ -1,6 +1,6 @@
 # =========================================================
 # app.py — Login/Cadastro + User/Admin + Aprovações (Sheets)
-# (com retry + diagnóstico + LISTAS/HISTÓRICOS) — CORRIGIDO
+# (ajustado aos cabeçalhos reais do seu Google Sheets)
 # =========================================================
 
 import os
@@ -18,7 +18,7 @@ from google.oauth2.service_account import Credentials
 from gspread.exceptions import APIError, WorksheetNotFound
 
 # ---------------------------------------------------------
-# CONFIG BÁSICA
+# CONFIG
 # ---------------------------------------------------------
 st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
 st.title("Sistema de gerenciamento do Laboratório Multiusuário ICB")
@@ -27,7 +27,14 @@ SPREADSHEET_ID = st.secrets["GSHEET_SPREADSHEET_ID"]
 
 SHEET_USERS = "users"
 SHEET_CAD = "cadastro_requests"
-SHEET_RES = "reservas"
+SHEET_RES = "reservas"  # (você escreveu cadastro_requests de novo; aqui é a aba de reservas)
+
+# Cabeçalhos EXATOS (conforme você informou)
+HEADERS_USERS = ["username", "name", "email", "role", "password_hash", "created_at"]
+HEADERS_CAD = ["id", "name", "username", "email", "password_hash", "status",
+               "created_at", "reviewed_at", "reviewed_by", "review_reason"]
+HEADERS_RES = ["id", "name", "username", "equipment", "date", "time", "status",
+               "created_at", "reviewed_at", "reviewed_by", "review_reason"]
 
 EQUIPAMENTOS = [
     "Microscópio",
@@ -71,7 +78,7 @@ st.markdown(
 )
 
 # ---------------------------------------------------------
-# HASH DE SENHA (PBKDF2)
+# PASSWORD HASH (PBKDF2)
 # ---------------------------------------------------------
 def hash_password(password: str, salt: bytes | None = None, iterations: int = 200_000) -> str:
     if salt is None:
@@ -115,49 +122,35 @@ def clear_cache():
     st.cache_data.clear()
 
 # ---------------------------------------------------------
-# BOOTSTRAP DAS ABAS (cria se não existir)
+# BOOTSTRAP: garante abas e cabeçalho
 # ---------------------------------------------------------
-def ensure_worksheets():
+def ensure_worksheet(title: str, headers: list[str]):
     sh = spreadsheet()
+    try:
+        w = sh.worksheet(title)
+    except WorksheetNotFound:
+        w = sh.add_worksheet(title=title, rows=2000, cols=max(12, len(headers)))
+        w.append_row(headers)
+        return
 
-    def ensure_sheet(title: str, headers: list[str]):
-        try:
-            w = sh.worksheet(title)
-        except WorksheetNotFound:
-            w = sh.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
-            w.append_row(headers)
-            return
+    vals = w.get_all_values()
+    if not vals:
+        w.append_row(headers)
+        return
 
-        vals = w.get_all_values()
-        if not vals:
-            w.append_row(headers)
-            return
+    # Se só existe linha 1 e ela é diferente, ajusta para o padrão
+    if len(vals) == 1 and vals[0] != headers:
+        w.update("1:1", [headers])
 
-        # Se só tem cabeçalho e ele não bate, atualiza (não mexe em dados existentes)
-        if len(vals) == 1:
-            existing_headers = vals[0]
-            if existing_headers != headers:
-                w.update("1:1", [headers])
-
-    ensure_sheet(
-        SHEET_USERS,
-        ["id", "name", "username", "email", "password_hash", "role", "status", "created_at"],
-    )
-    ensure_sheet(
-        SHEET_CAD,
-        ["id", "name", "username", "email", "password_hash", "status", "created_at",
-         "reviewed_at", "reviewed_by", "review_reason"],
-    )
-    ensure_sheet(
-        SHEET_RES,
-        ["id", "name", "username", "equipment", "date", "time", "status", "created_at",
-         "reviewed_at", "reviewed_by", "review_reason"],
-    )
+def ensure_worksheets():
+    ensure_worksheet(SHEET_USERS, HEADERS_USERS)
+    ensure_worksheet(SHEET_CAD, HEADERS_CAD)
+    ensure_worksheet(SHEET_RES, HEADERS_RES)
 
 ensure_worksheets()
 
 # ---------------------------------------------------------
-# Helpers: worksheet + leitura robusta (retry + diagnóstico)
+# HELPERS: worksheet + leitura robusta (retry + diagnóstico)
 # ---------------------------------------------------------
 def ws(sheet_name: str):
     try:
@@ -208,7 +201,7 @@ def read_df(sheet_name: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 # ---------------------------------------------------------
-# AUTH
+# AUTH (ajustado ao users sem 'id' e sem 'status')
 # ---------------------------------------------------------
 def users_get(username: str):
     df = read_df(SHEET_USERS)
@@ -221,9 +214,6 @@ def authenticate(username: str, password: str):
     u = users_get(username)
     if not u:
         return False, "Usuário inválido."
-    status = str(u.get("status", "")).strip().lower()
-    if status and status not in ["ativo", "active"]:
-        return False, "Usuário não está ativo (aguarde aprovação/regularização)."
     if verify_password(password, str(u.get("password_hash", ""))):
         return True, u
     return False, "Senha inválida."
@@ -232,11 +222,12 @@ def is_admin(user_dict: dict) -> bool:
     return str(user_dict.get("role", "")).strip().lower() == "admin"
 
 # ---------------------------------------------------------
-# CADASTRO (solicitação) + REVIEW (admin)
+# CADASTRO REQUESTS
 # ---------------------------------------------------------
 def cadastro_submit(name: str, username: str, email: str, password: str):
+    # bloqueia se já existir usuário
     if users_get(username):
-        return False, "Este username já existe em usuários."
+        return False, "Este username já existe."
 
     df_cad = read_df(SHEET_CAD)
     if not df_cad.empty and "username" in df_cad.columns and "status" in df_cad.columns:
@@ -269,9 +260,6 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
     rows = vals[1:]
     df = pd.DataFrame(rows, columns=headers).fillna("")
 
-    if "id" not in df.columns:
-        return False, "Aba cadastro_requests sem coluna 'id'."
-
     idx = df.index[df["id"] == request_id]
     if len(idx) == 0:
         return False, "Solicitação não encontrada."
@@ -283,18 +271,18 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
     df.loc[i, "reviewed_by"] = admin_username
     df.loc[i, "review_reason"] = reason
 
+    # Se aprovou, cria usuário na aba users com o cabeçalho REAL
     if action == "Aprovar":
         ws(SHEET_USERS).append_row([
-            str(uuid.uuid4()),
-            df.loc[i, "name"],
             df.loc[i, "username"],
+            df.loc[i, "name"],
             df.loc[i, "email"],
+            "user",  # padrão
             df.loc[i, "password_hash"],
-            "user",
-            "Ativo",
             datetime.utcnow().isoformat(timespec="seconds"),
         ])
 
+    # Atualiza a linha da solicitação (status + reviewed_*)
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(headers)}
     for col in ["status", "reviewed_at", "reviewed_by", "review_reason"]:
@@ -305,12 +293,13 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
     return True, f"Solicitação {status.lower()}."
 
 # ---------------------------------------------------------
-# RESERVAS (user solicita; admin confirma/rejeita)
+# RESERVAS
 # ---------------------------------------------------------
 def slot_available(df_res: pd.DataFrame, equipment: str, date: str, time_str: str) -> bool:
     if df_res.empty:
         return True
-    if not all(c in df_res.columns for c in ["equipment", "date", "time", "status"]):
+    required = {"equipment", "date", "time", "status"}
+    if not required.issubset(set(df_res.columns)):
         return True
     m = (
         (df_res["equipment"] == equipment) &
@@ -345,9 +334,6 @@ def reserva_review(reserva_id: str, action: str, admin_username: str, reason: st
     headers = vals[0]
     rows = vals[1:]
     df = pd.DataFrame(rows, columns=headers).fillna("")
-
-    if "id" not in df.columns:
-        return False, "Aba reservas sem coluna 'id'."
 
     idx = df.index[df["id"] == reserva_id]
     if len(idx) == 0:
@@ -428,7 +414,7 @@ user = st.session_state.user
 st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user.get('role','user')}**")
 
 # ---------------------------------------------------------
-# PAINEL ADMIN + LISTAS/HISTÓRICOS (CORRIGIDO: sort só se houver coluna)
+# PAINEL ADMIN (listas + históricos)
 # ---------------------------------------------------------
 if is_admin(user):
     st.subheader("🛠️ Painel do Administrador")
@@ -443,17 +429,18 @@ if is_admin(user):
         "📅 Reservas (pendentes + histórico)",
     ])
 
-    # --- LISTA DE USUÁRIOS ---
+    # --- Pessoas cadastradas ---
     with a1:
         if df_users.empty:
             st.info("Ainda não há usuários cadastrados.")
         else:
-            cols = [c for c in ["name", "username", "email", "role", "status", "created_at"] if c in df_users.columns]
+            cols = [c for c in ["username", "name", "email", "role", "created_at"] if c in df_users.columns]
             view = df_users[cols] if cols else df_users
             st.dataframe(view, use_container_width=True)
+
             st.caption("Dica: para criar o primeiro admin, edite a coluna 'role' do usuário para 'admin' na planilha.")
 
-    # --- CADASTROS: pendentes + histórico ---
+    # --- Cadastros ---
     with a2:
         if df_cad.empty:
             st.info("Ainda não há solicitações de cadastro.")
@@ -468,8 +455,7 @@ if is_admin(user):
                     st.info("Nenhum cadastro pendente.")
                 else:
                     cols = [c for c in ["id", "name", "username", "email", "created_at", "status"] if c in pend.columns]
-                    view = pend[cols] if cols else pend
-                    st.dataframe(view, use_container_width=True)
+                    st.dataframe(pend[cols] if cols else pend, use_container_width=True)
 
                     sel_id = st.selectbox("Selecione um cadastro (id) para revisar", pend["id"].tolist())
                     reason = st.text_input("Motivo (opcional)", key="cad_reason")
@@ -493,14 +479,12 @@ if is_admin(user):
                     cols = [c for c in ["name", "username", "email", "status", "created_at",
                                         "reviewed_at", "reviewed_by", "review_reason"] if c in hist.columns]
                     view = hist[cols] if cols else hist
-
                     by_cols = [c for c in ["reviewed_at", "created_at"] if c in view.columns]
                     if by_cols:
                         view = view.sort_values(by=by_cols, ascending=False)
-
                     st.dataframe(view, use_container_width=True)
 
-    # --- RESERVAS: pendentes + histórico ---
+    # --- Reservas ---
     with a3:
         if df_res.empty:
             st.info("Ainda não há solicitações de reserva.")
@@ -514,9 +498,8 @@ if is_admin(user):
                 if pend_res.empty:
                     st.info("Nenhuma reserva pendente.")
                 else:
-                    cols = [c for c in ["id", "username", "equipment", "date", "time", "status", "created_at"] if c in pend_res.columns]
-                    view = pend_res[cols] if cols else pend_res
-                    st.dataframe(view, use_container_width=True)
+                    cols = [c for c in ["id", "name", "username", "equipment", "date", "time", "status", "created_at"] if c in pend_res.columns]
+                    st.dataframe(pend_res[cols] if cols else pend_res, use_container_width=True)
 
                     sel_id = st.selectbox("Selecione uma reserva (id) para revisar", pend_res["id"].tolist(), key="res_sel")
                     reason = st.text_input("Motivo (opcional)", key="res_reason")
@@ -537,20 +520,18 @@ if is_admin(user):
                 if hist_res.empty:
                     st.info("Ainda não há reservas confirmadas/rejeitadas.")
                 else:
-                    cols = [c for c in ["username", "equipment", "date", "time", "status", "created_at",
+                    cols = [c for c in ["name", "username", "equipment", "date", "time", "status", "created_at",
                                         "reviewed_at", "reviewed_by", "review_reason"] if c in hist_res.columns]
                     view = hist_res[cols] if cols else hist_res
-
                     by_cols = [c for c in ["reviewed_at", "created_at"] if c in view.columns]
                     if by_cols:
                         view = view.sort_values(by=by_cols, ascending=False)
-
                     st.dataframe(view, use_container_width=True)
 
     st.divider()
 
 # ---------------------------------------------------------
-# PAINEL DO USUÁRIO (e admin também pode solicitar)
+# PAINEL USUÁRIO (e admin também pode solicitar)
 # ---------------------------------------------------------
 st.subheader("📌 Solicitar uso de equipamento")
 
