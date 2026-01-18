@@ -1,6 +1,6 @@
 # =========================================================
 # app.py — Login/Cadastro + User/Admin + Aprovações (Sheets)
-# (ajustado aos cabeçalhos reais do seu Google Sheets)
+# (ajustado aos seus cabeçalhos + bootstrap seguro + diagnóstico)
 # =========================================================
 
 import os
@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
-from gspread.exceptions import APIError, WorksheetNotFound
+from gspread.exceptions import APIError, WorksheetNotFound, SpreadsheetNotFound
 
 # ---------------------------------------------------------
 # CONFIG
@@ -27,7 +27,7 @@ SPREADSHEET_ID = st.secrets["GSHEET_SPREADSHEET_ID"]
 
 SHEET_USERS = "users"
 SHEET_CAD = "cadastro_requests"
-SHEET_RES = "reservas"  # (você escreveu cadastro_requests de novo; aqui é a aba de reservas)
+SHEET_RES = "reservas"
 
 # Cabeçalhos EXATOS (conforme você informou)
 HEADERS_USERS = ["username", "name", "email", "role", "password_hash", "created_at"]
@@ -114,18 +114,69 @@ def gclient():
     creds = Credentials.from_service_account_info(st.secrets["GSERVICE"], scopes=scopes)
     return gspread.authorize(creds)
 
+def _extract_api_error_info(e: APIError):
+    status = getattr(getattr(e, "response", None), "status_code", None)
+    text = getattr(getattr(e, "response", None), "text", "")
+    text = text[:400] + ("..." if text and len(text) > 400 else "")
+    return status, text
+
+def _retryable(status):
+    return status in (429, 500, 503)
+
 @st.cache_resource
 def spreadsheet():
-    return gclient().open_by_key(SPREADSHEET_ID)
+    # Abre a planilha com retry para erros temporários
+    last_err = None
+    for attempt in range(4):
+        try:
+            return gclient().open_by_key(SPREADSHEET_ID)
+        except APIError as e:
+            last_err = e
+            status, _ = _extract_api_error_info(e)
+            if _retryable(status):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise
+        except SpreadsheetNotFound:
+            raise
+    raise last_err
 
 def clear_cache():
     st.cache_data.clear()
 
 # ---------------------------------------------------------
-# BOOTSTRAP: garante abas e cabeçalho
+# HEALTH CHECK (não deixa o app morrer sem diagnóstico)
 # ---------------------------------------------------------
-def ensure_worksheet(title: str, headers: list[str]):
-    sh = spreadsheet()
+def sheets_health_check_or_stop():
+    try:
+        sh = spreadsheet()
+        # força metadata (onde você estava falhando)
+        _ = sh.fetch_sheet_metadata()
+        return sh
+    except SpreadsheetNotFound:
+        st.error("Planilha não encontrada. Confirme o GSHEET_SPREADSHEET_ID no Secrets.")
+        st.stop()
+    except APIError as e:
+        status, text = _extract_api_error_info(e)
+        st.error("Falha ao acessar a planilha (metadata). Isso costuma ser permissão/API/quota.")
+        with st.expander("Detalhes técnicos (diagnóstico)"):
+            st.write("HTTP status:", status)
+            if text:
+                st.write("Resposta (parcial):", text)
+            st.write("Service account:", st.secrets["GSERVICE"].get("client_email"))
+            st.write("Spreadsheet ID:", SPREADSHEET_ID)
+        st.info(
+            "Checklist rápido:\n"
+            "1) Compartilhe a planilha com o e-mail do service account como Editor.\n"
+            "2) Habilite Google Sheets API e Google Drive API no Google Cloud.\n"
+            "3) Se for quota/instabilidade, tente novamente / reinicie o app."
+        )
+        st.stop()
+
+# ---------------------------------------------------------
+# BOOTSTRAP: garante abas e cabeçalho (só após health check)
+# ---------------------------------------------------------
+def ensure_worksheet(sh, title: str, headers: list[str]):
     try:
         w = sh.worksheet(title)
     except WorksheetNotFound:
@@ -138,32 +189,28 @@ def ensure_worksheet(title: str, headers: list[str]):
         w.append_row(headers)
         return
 
-    # Se só existe linha 1 e ela é diferente, ajusta para o padrão
     if len(vals) == 1 and vals[0] != headers:
         w.update("1:1", [headers])
 
-def ensure_worksheets():
-    ensure_worksheet(SHEET_USERS, HEADERS_USERS)
-    ensure_worksheet(SHEET_CAD, HEADERS_CAD)
-    ensure_worksheet(SHEET_RES, HEADERS_RES)
+def ensure_worksheets(sh):
+    ensure_worksheet(sh, SHEET_USERS, HEADERS_USERS)
+    ensure_worksheet(sh, SHEET_CAD, HEADERS_CAD)
+    ensure_worksheet(sh, SHEET_RES, HEADERS_RES)
 
-ensure_worksheets()
+# roda check + bootstrap com segurança
+_sh = sheets_health_check_or_stop()
+ensure_worksheets(_sh)
 
 # ---------------------------------------------------------
-# HELPERS: worksheet + leitura robusta (retry + diagnóstico)
+# Helpers: worksheet + leitura robusta (retry)
 # ---------------------------------------------------------
 def ws(sheet_name: str):
     try:
         return spreadsheet().worksheet(sheet_name)
     except WorksheetNotFound:
-        ensure_worksheets()
+        # tenta criar e pegar de novo
+        ensure_worksheets(spreadsheet())
         return spreadsheet().worksheet(sheet_name)
-
-def _extract_api_error_info(e: APIError):
-    status = getattr(getattr(e, "response", None), "status_code", None)
-    text = getattr(getattr(e, "response", None), "text", "")
-    text = text[:400] + ("..." if text and len(text) > 400 else "")
-    return status, text
 
 @st.cache_data(ttl=15, show_spinner=False)
 def read_df(sheet_name: str) -> pd.DataFrame:
@@ -178,30 +225,22 @@ def read_df(sheet_name: str) -> pd.DataFrame:
         except APIError as e:
             last_err = e
             status, _ = _extract_api_error_info(e)
-            if status in (429, 500, 503):
+            if _retryable(status):
                 time.sleep(1.5 * (attempt + 1))
                 continue
             break
 
     status, text = _extract_api_error_info(last_err) if last_err else (None, "")
-    st.error(
-        "Não consegui ler a planilha no Google Sheets.\n\n"
-        "Causas mais comuns:\n"
-        "• A planilha NÃO está compartilhada com o e-mail do service account\n"
-        "• Google Sheets API/Drive API desabilitada no projeto\n"
-        "• Quota/limite temporário (tente novamente)\n"
-    )
+    st.error("Não consegui ler a planilha no Google Sheets.")
     with st.expander("Detalhes técnicos (diagnóstico)"):
         st.write("Sheet:", sheet_name)
         st.write("HTTP status:", status)
         if text:
             st.write("Resposta (parcial):", text)
-        st.write("Service account:", st.secrets["GSERVICE"].get("client_email"))
-        st.write("Spreadsheet ID:", SPREADSHEET_ID)
     return pd.DataFrame()
 
 # ---------------------------------------------------------
-# AUTH (ajustado ao users sem 'id' e sem 'status')
+# AUTH (users não tem id/status)
 # ---------------------------------------------------------
 def users_get(username: str):
     df = read_df(SHEET_USERS)
@@ -225,7 +264,6 @@ def is_admin(user_dict: dict) -> bool:
 # CADASTRO REQUESTS
 # ---------------------------------------------------------
 def cadastro_submit(name: str, username: str, email: str, password: str):
-    # bloqueia se já existir usuário
     if users_get(username):
         return False, "Este username já existe."
 
@@ -271,18 +309,16 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
     df.loc[i, "reviewed_by"] = admin_username
     df.loc[i, "review_reason"] = reason
 
-    # Se aprovou, cria usuário na aba users com o cabeçalho REAL
     if action == "Aprovar":
         ws(SHEET_USERS).append_row([
             df.loc[i, "username"],
             df.loc[i, "name"],
             df.loc[i, "email"],
-            "user",  # padrão
+            "user",
             df.loc[i, "password_hash"],
             datetime.utcnow().isoformat(timespec="seconds"),
         ])
 
-    # Atualiza a linha da solicitação (status + reviewed_*)
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(headers)}
     for col in ["status", "reviewed_at", "reviewed_by", "review_reason"]:
@@ -414,7 +450,7 @@ user = st.session_state.user
 st.success(f"Logado como **{user.get('name','')}**  | perfil: **{user.get('role','user')}**")
 
 # ---------------------------------------------------------
-# PAINEL ADMIN (listas + históricos)
+# PAINEL ADMIN
 # ---------------------------------------------------------
 if is_admin(user):
     st.subheader("🛠️ Painel do Administrador")
@@ -429,18 +465,14 @@ if is_admin(user):
         "📅 Reservas (pendentes + histórico)",
     ])
 
-    # --- Pessoas cadastradas ---
     with a1:
         if df_users.empty:
             st.info("Ainda não há usuários cadastrados.")
         else:
             cols = [c for c in ["username", "name", "email", "role", "created_at"] if c in df_users.columns]
-            view = df_users[cols] if cols else df_users
-            st.dataframe(view, use_container_width=True)
-
+            st.dataframe(df_users[cols] if cols else df_users, use_container_width=True)
             st.caption("Dica: para criar o primeiro admin, edite a coluna 'role' do usuário para 'admin' na planilha.")
 
-    # --- Cadastros ---
     with a2:
         if df_cad.empty:
             st.info("Ainda não há solicitações de cadastro.")
@@ -484,7 +516,6 @@ if is_admin(user):
                         view = view.sort_values(by=by_cols, ascending=False)
                     st.dataframe(view, use_container_width=True)
 
-    # --- Reservas ---
     with a3:
         if df_res.empty:
             st.info("Ainda não há solicitações de reserva.")
@@ -531,7 +562,7 @@ if is_admin(user):
     st.divider()
 
 # ---------------------------------------------------------
-# PAINEL USUÁRIO (e admin também pode solicitar)
+# PAINEL USUÁRIO
 # ---------------------------------------------------------
 st.subheader("📌 Solicitar uso de equipamento")
 
