@@ -46,7 +46,7 @@ from PIL import Image
 banner = Image.open("multiusuário.png")  # ajuste o caminho se necessário
 st.image(banner, use_container_width=True)
 st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
-st.title("Sistema de Gerenciamento de Reserva de Uso de Equipamentos")
+st.title("Sistema de Gerenciamento de Reserva de Equipamentos")
 
 SPREADSHEET_ID = st.secrets["GSHEET_SPREADSHEET_ID"]
 
