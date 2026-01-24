@@ -16,6 +16,7 @@ from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound
 from datetime import datetime
 import uuid
 import os, base64, hashlib, hmac
+from PIL import Image
 
 # ---------------------------------------------------------
 # CONFIG
@@ -169,6 +170,8 @@ st.markdown("""
 # ---------------------------------------------------------
 # UI
 # ---------------------------------------------------------
+banner = Image.open("/mnt/data/multiusuário.png")  # ajuste o caminho se necessário
+st.image(banner, use_container_width=True)
 st.title("Sistema de gerenciamento do Laboratório Multiusuário ICB")
 
 if not st.session_state.logged:
