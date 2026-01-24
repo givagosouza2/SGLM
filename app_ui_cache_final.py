@@ -170,7 +170,7 @@ st.markdown("""
 # ---------------------------------------------------------
 # UI
 # ---------------------------------------------------------
-banner = Image.open("/mnt/data/multiusuário.png")  # ajuste o caminho se necessário
+banner = Image.open("multiusuário.png")  # ajuste o caminho se necessário
 st.image(banner, use_container_width=True)
 st.title("Sistema de gerenciamento do Laboratório Multiusuário ICB")
 
