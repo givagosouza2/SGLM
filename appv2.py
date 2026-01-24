@@ -38,6 +38,7 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from gspread.exceptions import APIError, WorksheetNotFound, SpreadsheetNotFound
+from PIL import Image
 
 # ---------------------------------------------------------
 # CONFIG
