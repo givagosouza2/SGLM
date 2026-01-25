@@ -49,7 +49,7 @@ st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
 
 # Banner (opcional)
 try:
-    banner = Image.open("multiusuário.png")  # ajuste o caminho se necessário
+    banner = Image.open("multiusuáriov2.png")  # ajuste o caminho se necessário
     st.image(banner, use_container_width=True)
 except Exception:
     pass
