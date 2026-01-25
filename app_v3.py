@@ -1,17 +1,19 @@
 # =========================================================
 # app.py — Sistema Multiusuário (Streamlit + Google Sheets)
 # Login/Cadastro + Usuário/Admin + Reservas + Aprovações
-# + Notificação por e-mail ao ADMIN (cadastro e reserva)
+# + E-mails:
+#   - ao ADMIN: novo cadastro e nova reserva
+#   - ao USUÁRIO: quando ADMIN aprovar/rejeitar cadastro e confirmar/rejeitar reserva
 #
-# Cabeçalhos (EXATOS, conforme você informou):
+# Cabeçalhos (EXATOS):
 # users:
 #   username|name|email|role|password_hash|created_at
 # cadastro_requests:
 #   id|name|username|email|password_hash|status|created_at|reviewed_at|reviewed_by|review_reason
-# reservas (ATUALIZADO com início/fim):
+# reservas (com início/fim):
 #   id|name|username|equipment|date|start_time|end_time|status|created_at|reviewed_at|reviewed_by|review_reason
 #
-# Secrets necessários (exemplo):
+# Secrets necessários:
 # GSHEET_SPREADSHEET_ID="..."
 # [GSERVICE] ... json service account ...
 # [EMAIL]
@@ -47,27 +49,30 @@ st.set_page_config(page_title="Laboratório Multiusuário ICB", layout="wide")
 
 # Banner (opcional)
 try:
-    banner = Image.open("multiusuáriov2.png")  # ajuste o caminho se necessário
+    banner = Image.open("multiusuário.png")  # ajuste o caminho se necessário
     st.image(banner, use_container_width=True)
 except Exception:
     pass
 
 st.title("Sistema de Gerenciamento de Reserva de Equipamentos")
 
-SPREADSHEET_ID = st.secrets["GSHEET_SPREADSHEET_ID"]
+# Secrets: proteje contra KeyError e dá mensagem amigável
+SPREADSHEET_ID = st.secrets.get("GSHEET_SPREADSHEET_ID", "")
+if not SPREADSHEET_ID:
+    st.error("Faltou configurar GSHEET_SPREADSHEET_ID nos Secrets do Streamlit.")
+    st.info('Vá em Manage app → Settings → Secrets e adicione:\nGSHEET_SPREADSHEET_ID = "..."')
+    st.stop()
 
 SHEET_USERS = "users"
 SHEET_CAD = "cadastro_requests"
 SHEET_RES = "reservas"
 
-# Cabeçalhos EXATOS (conforme você informou)
+# Cabeçalhos EXATOS
 HEADERS_USERS = ["username", "name", "email", "role", "password_hash", "created_at"]
 HEADERS_CAD = [
     "id", "name", "username", "email", "password_hash", "status",
     "created_at", "reviewed_at", "reviewed_by", "review_reason"
 ]
-
-# ATUALIZADO: reservas com start_time e end_time
 HEADERS_RES = [
     "id", "name", "username", "equipment", "date", "start_time", "end_time", "status",
     "created_at", "reviewed_at", "reviewed_by", "review_reason"
@@ -124,13 +129,11 @@ st.markdown(
 )
 
 # ---------------------------------------------------------
-# E-MAIL (aviso ao administrador)
+# E-MAIL (genérico + admin wrapper)
 # ---------------------------------------------------------
-def send_admin_email(subject: str, body: str) -> bool:
+def send_email(to_email: str, subject: str, body: str) -> bool:
     """
-    Envia e-mail ao administrador quando há:
-      - novo pedido de cadastro
-      - nova solicitação de reserva
+    Envia e-mail usando SMTP configurado em st.secrets["EMAIL"].
     Não derruba o app se falhar.
     """
     if "EMAIL" not in st.secrets:
@@ -142,7 +145,7 @@ def send_admin_email(subject: str, body: str) -> bool:
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = cfg["FROM"]
-        msg["To"] = cfg["ADMIN_TO"]
+        msg["To"] = to_email
         msg.set_content(body)
 
         host = cfg["SMTP_HOST"]
@@ -158,8 +161,14 @@ def send_admin_email(subject: str, body: str) -> bool:
 
         return True
     except Exception as e:
-        st.warning(f"Não consegui enviar e-mail ao admin (aviso): {e}")
+        st.warning(f"Não consegui enviar e-mail (aviso): {e}")
         return False
+
+def send_admin_email(subject: str, body: str) -> bool:
+    """Envia sempre para o ADMIN_TO."""
+    if "EMAIL" not in st.secrets:
+        return False
+    return send_email(st.secrets["EMAIL"]["ADMIN_TO"], subject, body)
 
 # ---------------------------------------------------------
 # PASSWORD HASH (PBKDF2)
@@ -377,7 +386,7 @@ def is_admin(user_dict: dict) -> bool:
     return str(user_dict.get("role", "")).strip().lower() == "admin"
 
 # ---------------------------------------------------------
-# CADASTRO REQUESTS
+# CADASTRO REQUESTS (email ao admin + email ao usuário na revisão)
 # ---------------------------------------------------------
 def cadastro_submit(name: str, username: str, email: str, password: str):
     if users_get(username):
@@ -406,6 +415,7 @@ def cadastro_submit(name: str, username: str, email: str, password: str):
     ])
     clear_cache()
 
+    # e-mail ao admin
     send_admin_email(
         subject="Novo pedido de cadastro (Laboratório Multiusuário)",
         body=(
@@ -454,6 +464,7 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
             datetime.utcnow().isoformat(timespec="seconds"),
         ])
 
+    # Atualiza a linha do request
     row_number = i + 2
     col_map = {h: (j + 1) for j, h in enumerate(headers)}
     for col in ["status", "reviewed_at", "reviewed_by", "review_reason"]:
@@ -461,10 +472,28 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
             w.update_cell(row_number, col_map[col], str(df.loc[i, col]))
 
     clear_cache()
+
+    # e-mail ao usuário (sempre que o admin revisar)
+    user_email = str(df.loc[i, "email"]).strip()
+    if user_email:
+        send_email(
+            to_email=user_email,
+            subject=f"Cadastro {status} — Laboratório Multiusuário",
+            body=(
+                f"Olá, {df.loc[i,'name']}!\n\n"
+                f"Seu pedido de cadastro foi: {status}.\n"
+                f"Usuário: {df.loc[i,'username']}\n"
+                f"Revisado por: {admin_username}\n"
+                f"Data/hora (UTC): {reviewed_utc}\n"
+                + (f"\nMotivo informado: {reason}\n" if reason else "\n")
+                + ("Se aprovado, você já pode fazer login no sistema.\n" if status == "Aprovado" else "")
+            ),
+        )
+
     return True, f"Solicitação {status.lower()}."
 
 # ---------------------------------------------------------
-# RESERVAS (intervalo início/fim)
+# RESERVAS (email ao admin + email ao usuário na revisão)
 # ---------------------------------------------------------
 def _to_minutes(hhmm: str) -> int:
     h, m = hhmm.split(":")
@@ -478,12 +507,8 @@ def slot_available(df_res: pd.DataFrame, equipment: str, date: str, start_time: 
     if df_res.empty:
         return True
 
-    # Compatibilidade com planilha antiga (se existir coluna "time")
-    has_new = {"start_time", "end_time"}.issubset(df_res.columns)
-    has_old = "time" in df_res.columns
-
-    needed_base = {"equipment", "date", "status"}
-    if not needed_base.issubset(set(df_res.columns)):
+    needed = {"equipment", "date", "status"}
+    if not needed.issubset(set(df_res.columns)):
         return True
 
     df_day = df_res[
@@ -498,8 +523,10 @@ def slot_available(df_res: pd.DataFrame, equipment: str, date: str, start_time: 
     req_s = _to_minutes(start_time)
     req_e = _to_minutes(end_time)
 
-    intervals = []
+    has_new = {"start_time", "end_time"}.issubset(df_day.columns)
+    has_old = "time" in df_day.columns
 
+    intervals = []
     if has_new:
         for _, r in df_day.iterrows():
             s = str(r.get("start_time", "")).strip()
@@ -510,19 +537,18 @@ def slot_available(df_res: pd.DataFrame, equipment: str, date: str, start_time: 
                 except Exception:
                     pass
     elif has_old:
-        # reserva antiga: assume 1h a partir de "time"
         for _, r in df_day.iterrows():
             t = str(r.get("time", "")).strip()
             if t:
                 try:
                     s = _to_minutes(t)
-                    e = s + 60
+                    e = s + 60  # assume 1h na versão antiga
                     intervals.append((s, e))
                 except Exception:
                     pass
 
-    # sobreposição de intervalos: [req_s, req_e) sobrepõe [s, e) se req_s < e e req_e > s
     for s, e in intervals:
+        # sobreposição: [req_s, req_e) com [s, e)
         if req_s < e and req_e > s:
             return False
 
@@ -548,6 +574,7 @@ def reserva_submit(user: dict, equipment: str, date: str, start_time: str, end_t
     ])
     clear_cache()
 
+    # e-mail ao admin
     send_admin_email(
         subject="Nova solicitação de reserva de equipamento",
         body=(
@@ -596,6 +623,32 @@ def reserva_review(reserva_id: str, action: str, admin_username: str, reason: st
             w.update_cell(row_number, col_map[col], str(df.loc[i, col]))
 
     clear_cache()
+
+    # e-mail ao usuário (busca e-mail em users usando o username)
+    req_username = str(df.loc[i, "username"]).strip() if "username" in df.columns else ""
+    u = users_get(req_username) if req_username else None
+    user_email = str(u.get("email", "")).strip() if u else ""
+
+    st_time = str(df.loc[i, "start_time"]).strip() if "start_time" in df.columns else ""
+    en_time = str(df.loc[i, "end_time"]).strip() if "end_time" in df.columns else ""
+
+    if user_email:
+        send_email(
+            to_email=user_email,
+            subject=f"Reserva {status} — {df.loc[i,'equipment']} ({df.loc[i,'date']})",
+            body=(
+                f"Olá, {df.loc[i,'name']}!\n\n"
+                f"Sua solicitação de reserva foi: {status}.\n"
+                f"Equipamento: {df.loc[i,'equipment']}\n"
+                f"Data: {df.loc[i,'date']}\n"
+                f"Início: {st_time}\n"
+                f"Fim: {en_time}\n"
+                f"Revisado por: {admin_username}\n"
+                f"Data/hora (UTC): {reviewed_utc}\n"
+                + (f"\nMotivo informado: {reason}\n" if reason else "\n")
+            ),
+        )
+
     return True, f"Reserva {status.lower()}."
 
 # ---------------------------------------------------------
@@ -742,10 +795,6 @@ if is_admin(user):
                 else:
                     cols = [c for c in ["id", "name", "username", "equipment", "date",
                                         "start_time", "end_time", "status", "created_at"] if c in pend_res.columns]
-                    # fallback se ainda existir "time"
-                    if not cols and "time" in pend_res.columns:
-                        cols = [c for c in ["id", "name", "username", "equipment", "date", "time", "status", "created_at"] if c in pend_res.columns]
-
                     st.dataframe(pend_res[cols] if cols else pend_res, use_container_width=True)
 
                     sel_id = st.selectbox("Selecione uma reserva (id) para revisar", pend_res["id"].tolist(), key="res_sel")
@@ -770,10 +819,6 @@ if is_admin(user):
                     cols = [c for c in ["name", "username", "equipment", "date",
                                         "start_time", "end_time", "status", "created_at",
                                         "reviewed_at", "reviewed_by", "review_reason"] if c in hist_res.columns]
-                    if not cols and "time" in hist_res.columns:
-                        cols = [c for c in ["name", "username", "equipment", "date", "time", "status", "created_at",
-                                            "reviewed_at", "reviewed_by", "review_reason"] if c in hist_res.columns]
-
                     view = hist_res[cols] if cols else hist_res
                     by_cols = [c for c in ["reviewed_at", "created_at"] if c in view.columns]
                     if by_cols:
@@ -789,22 +834,28 @@ st.subheader("📌 Solicitar uso de equipamento")
 
 df_res = read_df(SHEET_RES)
 
+# Regra: data mínima = hoje + 7 dias
+min_date = (datetime.today().date() + timedelta(days=7))
+
 c1, c2, c3, c4 = st.columns([2, 2, 2, 2])
 with c1:
     equip = st.selectbox("Equipamento", EQUIPAMENTOS)
 with c2:
-    min_date = (datetime.today().date() + timedelta(days=7))
     date_obj = st.date_input("Data", min_date, min_value=min_date)
 with c3:
     start_time = st.selectbox("Início", HORARIOS, key="start_time")
 with c4:
-    # padrão: 1h após o início (2 passos de 30min)
     try:
         i = HORARIOS.index(start_time)
-        default_end = min(i + 2, len(HORARIOS) - 1)
+        default_end = min(i + 2, len(HORARIOS) - 1)  # 1h depois (2 passos de 30min)
     except Exception:
         default_end = 0
     end_time = st.selectbox("Fim", HORARIOS, index=default_end, key="end_time")
+
+# Segurança extra (mesmo com min_value)
+if date_obj < min_date:
+    st.error("A data mínima para reserva é 7 dias a partir de hoje.")
+    st.stop()
 
 date_str = date_obj.strftime("%d/%m/%Y")
 avail = slot_available(df_res, equip, date_str, start_time, end_time)
@@ -814,21 +865,16 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 if st.button("Enviar pedido de reserva", use_container_width=True):
-    if date_obj < min_date:
-        st.error("A data mínima para reserva é 7 dias a partir de hoje.")
-        st.stop()
+    if avail:
+        reserva_submit(user, equip, date_str, start_time, end_time)
+        st.success("Pedido enviado (status: Pendente).")
+        st.rerun()
     else:
-        if avail:
-            reserva_submit(user, equip, date_str, start_time, end_time)
-            st.success("Pedido enviado (status: Pendente).")
-            st.rerun()
+        if _to_minutes(end_time) <= _to_minutes(start_time):
+            st.error("O horário de fim precisa ser maior que o horário de início.")
         else:
-            if _to_minutes(end_time) <= _to_minutes(start_time):
-                st.error("O horário de fim precisa ser maior que o horário de início.")
-            else:
-                st.error("Horário indisponível para este equipamento (conflito com outra reserva).")
+            st.error("Horário indisponível para este equipamento (conflito com outra reserva).")
 
 st.subheader("📋 Meus pedidos (pendentes e finalizados)")
 
@@ -850,8 +896,6 @@ else:
                 st.info("Sem pedidos pendentes.")
             else:
                 cols = [c for c in ["equipment", "date", "start_time", "end_time", "status", "created_at"] if c in pend.columns]
-                if not cols and "time" in pend.columns:
-                    cols = [c for c in ["equipment", "date", "time", "status", "created_at"] if c in pend.columns]
                 st.dataframe(pend[cols] if cols else pend, use_container_width=True)
 
         with tdone:
@@ -860,9 +904,6 @@ else:
             else:
                 cols = [c for c in ["equipment", "date", "start_time", "end_time", "status",
                                     "created_at", "reviewed_at", "review_reason"] if c in done.columns]
-                if not cols and "time" in done.columns:
-                    cols = [c for c in ["equipment", "date", "time", "status",
-                                        "created_at", "reviewed_at", "review_reason"] if c in done.columns]
                 st.dataframe(done[cols] if cols else done, use_container_width=True)
 
 st.divider()
