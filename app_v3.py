@@ -31,7 +31,7 @@ import hashlib
 import hmac
 import smtplib
 from email.message import EmailMessage
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -793,7 +793,8 @@ c1, c2, c3, c4 = st.columns([2, 2, 2, 2])
 with c1:
     equip = st.selectbox("Equipamento", EQUIPAMENTOS)
 with c2:
-    date_obj = st.date_input("Data", datetime.today().date())
+    min_date = (datetime.today().date() + timedelta(days=7))
+    date_obj = st.date_input("Data", min_date, min_value=min_date)
 with c3:
     start_time = st.selectbox("Início", HORARIOS, key="start_time")
 with c4:
@@ -813,16 +814,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 if st.button("Enviar pedido de reserva", use_container_width=True):
-    if avail:
-        reserva_submit(user, equip, date_str, start_time, end_time)
-        st.success("Pedido enviado (status: Pendente).")
-        st.rerun()
+    if date_obj < min_date:
+        st.error("A data mínima para reserva é 7 dias a partir de hoje.")
+        st.stop()
     else:
-        if _to_minutes(end_time) <= _to_minutes(start_time):
-            st.error("O horário de fim precisa ser maior que o horário de início.")
+        if avail:
+            reserva_submit(user, equip, date_str, start_time, end_time)
+            st.success("Pedido enviado (status: Pendente).")
+            st.rerun()
         else:
-            st.error("Horário indisponível para este equipamento (conflito com outra reserva).")
+            if _to_minutes(end_time) <= _to_minutes(start_time):
+                st.error("O horário de fim precisa ser maior que o horário de início.")
+            else:
+                st.error("Horário indisponível para este equipamento (conflito com outra reserva).")
 
 st.subheader("📋 Meus pedidos (pendentes e finalizados)")
 
