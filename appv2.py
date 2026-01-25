@@ -61,7 +61,7 @@ HEADERS_CAD = [
     "created_at", "reviewed_at", "reviewed_by", "review_reason"
 ]
 HEADERS_RES = [
-    "id", "name", "username", "equipment", "date", "time", "status",
+    "id", "name", "username", "equipment", "date", "start_time", "end_time", "status",
     "created_at", "reviewed_at", "reviewed_by", "review_reason"
 ]
 
