@@ -79,11 +79,18 @@ HEADERS_RES = [
 ]
 
 EQUIPAMENTOS = [
-    "Microscópio",
-    "Centrífuga",
-    "PCR",
-    "Freezer -80°C",
-    "Espectrofotômetro",
+    "Ultrapurificador de água – Ultrapurificação (BioHuman Power - Biosystem)",
+    "Capela de Exaustão de Gases",
+    "Estereomicroscópio Binocular (SMZ1500 - Nikon)",
+    "Microscópio Fluorescência (Eclipse Ni – Nikon)",
+    "Sistema de Fotodocumentação de Gel (EBOX - Vilber)",
+    "Picodrop (200 - Victory Scientific)",
+    "Cristato (Leica)",
+    "Ultrafreezer Vertical -80°C (Sayno VIP)",
+    "Centrígufa Refrigerada (Thermo Scientific)",
+    "Leitora de Microplaca e Lavadora automática (BioTek)",
+    "Real-Time PCR System – StepOnePlus",
+    "Sala de Comportamento",
 ]
 
 def gerar_horarios(inicio=8, fim=18, passo_min=30):
