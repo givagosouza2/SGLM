@@ -770,7 +770,7 @@ if is_admin(user):
                 if pend.empty:
                     st.info("Nenhum cadastro pendente.")
                 else:
-                    cols = [c for c in ["id", "name", "username", "email", "laboratory_advisor", "created_at", "status"] if c in pend.columns]
+                    cols = [c for c in ["id", "name", "username", "email", "Origem", "created_at", "status"] if c in pend.columns]
                     st.dataframe(pend[cols] if cols else pend, use_container_width=True)
 
                     sel_id = st.selectbox("Selecione um cadastro (id) para revisar", pend["id"].tolist())
