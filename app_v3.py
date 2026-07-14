@@ -7,9 +7,9 @@
 #
 # Cabeçalhos (EXATOS):
 # users:
-#   username|name|email|role|password_hash|created_at
+#   username|name|email|laboratory_advisor|role|password_hash|created_at
 # cadastro_requests:
-#   id|name|username|email|password_hash|status|created_at|reviewed_at|reviewed_by|review_reason
+#   id|name|username|email|laboratory_advisor|password_hash|status|created_at|reviewed_at|reviewed_by|review_reason
 # reservas (com início/fim):
 #   id|name|username|equipment|date|start_time|end_time|status|created_at|reviewed_at|reviewed_by|review_reason
 #
@@ -68,9 +68,9 @@ SHEET_CAD = "cadastro_requests"
 SHEET_RES = "reservas"
 
 # Cabeçalhos EXATOS
-HEADERS_USERS = ["username", "name", "email", "role", "password_hash", "created_at"]
+HEADERS_USERS = ["username", "name", "email", "laboratory_advisor", "role", "password_hash", "created_at"]
 HEADERS_CAD = [
-    "id", "name", "username", "email", "password_hash", "status",
+    "id", "name", "username", "email", "laboratory_advisor", "password_hash", "status",
     "created_at", "reviewed_at", "reviewed_by", "review_reason"
 ]
 HEADERS_RES = [
@@ -299,9 +299,14 @@ def ensure_header(ws_obj, headers: list[str]):
     if not vals:
         ws_obj.append_row(headers)
         return
-    # Se existir apenas cabeçalho e for diferente, atualiza a linha 1
-    if len(vals) == 1 and vals[0] != headers:
-        ws_obj.update("1:1", [headers])
+
+    current_headers = vals[0]
+    missing_headers = [h for h in headers if h not in current_headers]
+
+    # Acrescenta novas colunas sem apagar ou deslocar os dados já existentes.
+    if missing_headers:
+        updated_headers = current_headers + missing_headers
+        ws_obj.update("1:1", [updated_headers])
 
 def ensure_worksheets(sh):
     wmap = get_worksheets_map_with_retry(sh)
@@ -395,7 +400,7 @@ def is_admin(user_dict: dict) -> bool:
 # ---------------------------------------------------------
 # CADASTRO REQUESTS (email ao admin + email ao usuário na revisão)
 # ---------------------------------------------------------
-def cadastro_submit(name: str, username: str, email: str, password: str):
+def cadastro_submit(name: str, username: str, email: str, laboratory_advisor: str, password: str):
     if users_get(username):
         return False, "Este username já existe."
 
@@ -413,6 +418,7 @@ def cadastro_submit(name: str, username: str, email: str, password: str):
         name.strip(),
         username.strip(),
         email.strip(),
+        laboratory_advisor.strip(),
         hash_password(password),
         "Pendente",
         created_utc,
@@ -431,6 +437,7 @@ def cadastro_submit(name: str, username: str, email: str, password: str):
             f"Nome: {name}\n"
             f"Username: {username}\n"
             f"Email: {email}\n"
+            f"Laboratório de origem/Orientador: {laboratory_advisor}\n"
             f"Data/hora (UTC): {created_utc}\n\n"
             "Acesse o painel de administrador para aprovar/rejeitar."
         ),
@@ -466,6 +473,7 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
             df.loc[i, "username"],
             df.loc[i, "name"],
             df.loc[i, "email"],
+            df.loc[i, "laboratory_advisor"] if "laboratory_advisor" in df.columns else "",
             "user",
             df.loc[i, "password_hash"],
             datetime.utcnow().isoformat(timespec="seconds"),
@@ -490,6 +498,7 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
                 f"Olá, {df.loc[i,'name']}!\n\n"
                 f"Seu pedido de cadastro foi: {status}.\n"
                 f"Usuário: {df.loc[i,'username']}\n"
+                f"Laboratório de origem/Orientador: {df.loc[i, 'laboratory_advisor'] if 'laboratory_advisor' in df.columns else ''}\n"
                 f"Revisado por: {admin_username}\n"
                 f"Data/hora (UTC): {reviewed_utc}\n"
                 + (f"\nMotivo informado: {reason}\n" if reason else "\n")
@@ -691,18 +700,23 @@ if not st.session_state.logged:
         name = st.text_input("Nome completo", key="cad_name")
         username = st.text_input("Username (login)", key="cad_username")
         email = st.text_input("Email", key="cad_email")
+        laboratory_advisor = st.text_input(
+            "Laboratório de origem/Orientador",
+            key="cad_laboratory_advisor",
+            placeholder="Ex.: Laboratório de Neurofisiologia / Prof. João Silva",
+        )
         pw1 = st.text_input("Senha", type="password", key="cad_pw1")
         pw2 = st.text_input("Confirmar senha", type="password", key="cad_pw2")
 
         if st.button("Solicitar cadastro", use_container_width=True):
-            if not name.strip() or not username.strip() or not email.strip():
-                st.error("Preencha nome, username e email.")
+            if not name.strip() or not username.strip() or not email.strip() or not laboratory_advisor.strip():
+                st.error("Preencha nome, username, email e Laboratório de origem/Orientador.")
             elif len(pw1) < 6:
                 st.error("Use uma senha com pelo menos 6 caracteres.")
             elif pw1 != pw2:
                 st.error("As senhas não coincidem.")
             else:
-                ok, msg = cadastro_submit(name, username, email, pw1)
+                ok, msg = cadastro_submit(name, username, email, laboratory_advisor, pw1)
                 (st.success if ok else st.error)(msg)
 
         st.info("Após solicitar, o administrador precisa aprovar para você conseguir fazer login.")
@@ -737,7 +751,7 @@ if is_admin(user):
         if df_users.empty:
             st.info("Ainda não há usuários cadastrados.")
         else:
-            cols = [c for c in ["username", "name", "email", "role", "created_at"] if c in df_users.columns]
+            cols = [c for c in ["username", "name", "email", "laboratory_advisor", "role", "created_at"] if c in df_users.columns]
             view = df_users[cols] if cols else df_users
             st.dataframe(view, use_container_width=True)
             st.caption("Para tornar alguém admin: edite 'role' para 'admin' na aba users.")
@@ -756,7 +770,7 @@ if is_admin(user):
                 if pend.empty:
                     st.info("Nenhum cadastro pendente.")
                 else:
-                    cols = [c for c in ["id", "name", "username", "email", "created_at", "status"] if c in pend.columns]
+                    cols = [c for c in ["id", "name", "username", "email", "laboratory_advisor", "created_at", "status"] if c in pend.columns]
                     st.dataframe(pend[cols] if cols else pend, use_container_width=True)
 
                     sel_id = st.selectbox("Selecione um cadastro (id) para revisar", pend["id"].tolist())
@@ -778,7 +792,7 @@ if is_admin(user):
                 if hist.empty:
                     st.info("Ainda não há cadastros aprovados/rejeitados.")
                 else:
-                    cols = [c for c in ["name", "username", "email", "status", "created_at",
+                    cols = [c for c in ["name", "username", "email", "laboratory_advisor", "status", "created_at",
                                         "reviewed_at", "reviewed_by", "review_reason"] if c in hist.columns]
                     view = hist[cols] if cols else hist
                     by_cols = [c for c in ["reviewed_at", "created_at"] if c in view.columns]
