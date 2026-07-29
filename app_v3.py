@@ -376,6 +376,35 @@ def read_df(sheet_name: str) -> pd.DataFrame:
             st.write("Resposta (parcial):", text)
     return pd.DataFrame()
 
+def append_row_by_header(sheet_name: str, data: dict):
+    """
+    Grava cada valor na coluna identificada pelo cabeçalho da planilha.
+
+    Isso evita deslocamentos quando uma coluna nova é acrescentada ao final
+    de uma aba antiga ou quando as colunas estão em ordem diferente.
+    """
+    w = ws(sheet_name)
+    values = w.get_all_values()
+
+    if not values:
+        expected_headers = {
+            SHEET_USERS: HEADERS_USERS,
+            SHEET_CAD: HEADERS_CAD,
+            SHEET_RES: HEADERS_RES,
+        }[sheet_name]
+        w.append_row(expected_headers)
+        headers = expected_headers
+    else:
+        headers = values[0]
+
+    missing = [column for column in data if column not in headers]
+    if missing:
+        headers = headers + missing
+        w.update("1:1", [headers])
+
+    row = [str(data.get(column, "")) for column in headers]
+    w.append_row(row, value_input_option="RAW")
+
 # ---------------------------------------------------------
 # AUTH
 # ---------------------------------------------------------
@@ -413,19 +442,19 @@ def cadastro_submit(name: str, username: str, email: str, laboratory_advisor: st
     req_id = str(uuid.uuid4())
     created_utc = datetime.utcnow().isoformat(timespec="seconds")
 
-    ws(SHEET_CAD).append_row([
-        req_id,
-        name.strip(),
-        username.strip(),
-        email.strip(),
-        laboratory_advisor.strip(),
-        hash_password(password),
-        "Pendente",
-        created_utc,
-        "",
-        "",
-        "",
-    ])
+    append_row_by_header(SHEET_CAD, {
+        "id": req_id,
+        "name": name.strip(),
+        "username": username.strip(),
+        "email": email.strip(),
+        "laboratory_advisor": laboratory_advisor.strip(),
+        "password_hash": hash_password(password),
+        "status": "Pendente",
+        "created_at": created_utc,
+        "reviewed_at": "",
+        "reviewed_by": "",
+        "review_reason": "",
+    })
     clear_cache()
 
     # e-mail ao admin
@@ -469,15 +498,18 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
     df.loc[i, "review_reason"] = reason
 
     if action == "Aprovar":
-        ws(SHEET_USERS).append_row([
-            df.loc[i, "username"],
-            df.loc[i, "name"],
-            df.loc[i, "email"],
-            df.loc[i, "laboratory_advisor"] if "laboratory_advisor" in df.columns else "",
-            "user",
-            df.loc[i, "password_hash"],
-            datetime.utcnow().isoformat(timespec="seconds"),
-        ])
+        append_row_by_header(SHEET_USERS, {
+            "username": df.loc[i, "username"],
+            "name": df.loc[i, "name"],
+            "email": df.loc[i, "email"],
+            "laboratory_advisor": (
+                df.loc[i, "laboratory_advisor"]
+                if "laboratory_advisor" in df.columns else ""
+            ),
+            "role": "user",
+            "password_hash": df.loc[i, "password_hash"],
+            "created_at": datetime.utcnow().isoformat(timespec="seconds"),
+        })
 
     # Atualiza a linha do request
     row_number = i + 2
@@ -574,20 +606,20 @@ def reserva_submit(user: dict, equipment: str, date: str, start_time: str, end_t
     res_id = str(uuid.uuid4())
     created_utc = datetime.utcnow().isoformat(timespec="seconds")
 
-    ws(SHEET_RES).append_row([
-        res_id,
-        user.get("name", ""),
-        user.get("username", ""),
-        equipment,
-        date,
-        start_time,
-        end_time,
-        "Pendente",
-        created_utc,
-        "",
-        "",
-        "",
-    ])
+    append_row_by_header(SHEET_RES, {
+        "id": res_id,
+        "name": user.get("name", ""),
+        "username": user.get("username", ""),
+        "equipment": equipment,
+        "date": date,
+        "start_time": start_time,
+        "end_time": end_time,
+        "status": "Pendente",
+        "created_at": created_utc,
+        "reviewed_at": "",
+        "reviewed_by": "",
+        "review_reason": "",
+    })
     clear_cache()
 
     # e-mail ao admin
