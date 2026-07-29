@@ -68,9 +68,9 @@ SHEET_CAD = "cadastro_requests"
 SHEET_RES = "reservas"
 
 # Cabeçalhos EXATOS
-HEADERS_USERS = ["username", "name", "email", "origem", "role", "password_hash", "created_at"]
+HEADERS_USERS = ["username", "name", "email", "Origem", "role", "password_hash", "created_at"]
 HEADERS_CAD = [
-    "id", "name", "username", "email", "origem", "password_hash", "status",
+    "id", "name", "username", "email", "Origem", "password_hash", "status",
     "created_at", "reviewed_at", "reviewed_by", "review_reason"
 ]
 HEADERS_RES = [
@@ -447,7 +447,7 @@ def cadastro_submit(name: str, username: str, email: str, origem: str, password:
         "name": name.strip(),
         "username": username.strip(),
         "email": email.strip(),
-        "origem": origem.strip(),
+        "Origem": origem.strip(),
         "password_hash": hash_password(password),
         "status": "Pendente",
         "created_at": created_utc,
@@ -502,9 +502,9 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
             "username": df.loc[i, "username"],
             "name": df.loc[i, "name"],
             "email": df.loc[i, "email"],
-            "origem": (
-                df.loc[i, "origem"]
-                if "origem" in df.columns else ""
+            "Origem": (
+                df.loc[i, "Origem"]
+                if "Origem" in df.columns else ""
             ),
             "role": "user",
             "password_hash": df.loc[i, "password_hash"],
@@ -530,7 +530,7 @@ def cadastro_review(request_id: str, action: str, admin_username: str, reason: s
                 f"Olá, {df.loc[i,'name']}!\n\n"
                 f"Seu pedido de cadastro foi: {status}.\n"
                 f"Usuário: {df.loc[i,'username']}\n"
-                f"Laboratório de origem/Orientador: {df.loc[i, 'origem'] if 'origem' in df.columns else ''}\n"
+                f"Laboratório de origem/Orientador: {df.loc[i, 'Origem'] if 'Origem' in df.columns else ''}\n"
                 f"Revisado por: {admin_username}\n"
                 f"Data/hora (UTC): {reviewed_utc}\n"
                 + (f"\nMotivo informado: {reason}\n" if reason else "\n")
@@ -783,7 +783,7 @@ if is_admin(user):
         if df_users.empty:
             st.info("Ainda não há usuários cadastrados.")
         else:
-            cols = [c for c in ["username", "name", "email", "origem", "role", "created_at"] if c in df_users.columns]
+            cols = [c for c in ["username", "name", "email", "Origem", "role", "created_at"] if c in df_users.columns]
             view = df_users[cols] if cols else df_users
             st.dataframe(view, use_container_width=True)
             st.caption("Para tornar alguém admin: edite 'role' para 'admin' na aba users.")
@@ -824,7 +824,7 @@ if is_admin(user):
                 if hist.empty:
                     st.info("Ainda não há cadastros aprovados/rejeitados.")
                 else:
-                    cols = [c for c in ["name", "username", "email", "origem", "status", "created_at",
+                    cols = [c for c in ["name", "username", "email", "Origem", "status", "created_at",
                                         "reviewed_at", "reviewed_by", "review_reason"] if c in hist.columns]
                     view = hist[cols] if cols else hist
                     by_cols = [c for c in ["reviewed_at", "created_at"] if c in view.columns]
